@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "isp-speed-monitor"
+version = "1.1.0"
+description = "Network performance monitor with ISP SLA breach detection, outage tracking, and SQLite storage"
+requires-python = ">=3.10"
+dependencies = [
+    "speedtest-cli>=2.1.3",
+    "requests>=2.31.0",
+    "schedule>=1.2.1",
+    "reportlab>=4.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["monitor"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "pytest-env>=1.1.0",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
