@@ -1,145 +1,180 @@
-# ispmon — ISP Speed & SLA Breach Monitor
+# ispmon: ISP Speed and SLA Monitor
 
-A lightweight, self-hosted Go daemon for people who pay for a fixed-speed internet plan and want dispute-ready evidence when their ISP fails to deliver.
-
----
-
-## Why ispmon?
-
-Most home and business internet contracts specify a **minimum guaranteed speed** (often 30% to 80% of advertised bandwidth) and an **uptime commitment**. However, when your connection degrades, customer support often demands proof over extended periods.
-
-`ispmon`:
-1. Executes the official Ookla `speedtest` CLI on a regular interval and logs bandwidth, latency, jitter, packet loss, and official `speedtest.net` verification URLs to SQLite.
-2. Evaluates contractual SLA compliance over a rolling window (e.g. 24 hours). Declares a breach when speeds repeatedly violate your contract and alerts you with official proof links.
-3. Detects connectivity outages separately via lightweight TCP probes without distorting speed ratios.
-4. Generates dispute packets (in-memory CSV and PDF evidence reports) and dispatches alerts via Discord webhooks and SMTP email.
+`ispmon` is a background program written in Go.
+It monitors your internet connection.
+It collects evidence when your Internet Service Provider (ISP) does not deliver the contracted speed.
 
 ---
 
-## Quickstart
+## Purpose
+
+Internet contracts specify a minimum guaranteed speed.
+Contracts also specify an uptime commitment.
+When your network connection becomes slow, customer service asks for proof.
+
+`ispmon` helps you collect this proof:
+1. It runs the official Ookla `speedtest` Command Line Interface (CLI) at a set interval.
+2. It saves speed, latency, jitter, packet loss, and official proof links in a local SQLite database.
+3. It evaluates contract compliance across a rolling time window.
+4. It detects network outages with separate TCP probes.
+5. It creates dispute packets with CSV and PDF reports.
+6. It sends notifications through Discord webhooks and email.
+
+---
+
+## Quick Start
 
 ### Option 1: Docker Compose (Recommended)
 
-1. **Clone the repository and prepare configuration:**
+1. Copy the example configuration file:
    ```bash
    cp .env.example .env
+   ```
+
+2. Open the `.env` file and set your plan values:
+   ```bash
    nano .env
    ```
-   *Set your ISP plan name, advertised speeds, contractual thresholds, and optional Discord/SMTP details.*
 
-2. **Start the monitor:**
+3. Start the container:
    ```bash
    docker compose up -d
    ```
 
-3. **Inspect logs and health:**
+4. View the status and logs:
    ```bash
-   docker compose logs -f
    docker compose ps
+   docker compose logs -f
    ```
 
 ---
 
-### Option 2: Binary / Local Setup
+### Option 2: Binary Setup
 
 #### 1. Install the Official Ookla Speedtest CLI
 
-`ispmon` uses the official Ookla binary to capture Gigabit-accurate speeds and official dispute proof links.
+You must install the official Ookla CLI tool.
 
-- **macOS (Homebrew):**
+- **macOS:**
   ```bash
   brew install speedtest
   ```
 
-- **Debian / Ubuntu:**
+- **Debian and Ubuntu:**
   ```bash
   curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
   sudo apt-get install speedtest
   ```
 
-- **RedHat / Fedora / CentOS:**
+- **RedHat and Fedora:**
   ```bash
   curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash
   sudo dnf install speedtest
   ```
 
-#### 2. Build and Install ispmon
+#### 2. Build the Program
 
-Requires **Go 1.22+**.
+The program requires Go 1.22 or newer.
 
+Build the binary:
 ```bash
-# Build binary
 make build
+```
 
-# Or install to $GOPATH/bin
+Or install the binary to your Go binary directory:
+```bash
 go install ./cmd/ispmon
 ```
 
-#### 3. Run the Daemon
+#### 3. Run the Program
 
-```bash
-cp .env.example .env
-# Edit .env with your plan parameters
-./bin/ispmon run
-```
+1. Copy the configuration file:
+   ```bash
+   cp .env.example .env
+   ```
 
-Subcommands:
-- `ispmon run`: Run monitoring daemon (default)
-- `ispmon healthcheck`: Check heartbeat freshness (exit 0 if healthy, 1 if stale)
-- `ispmon version`: Print version and build details
+2. Set your configuration values in `.env`.
+
+3. Start the daemon:
+   ```bash
+   ./bin/ispmon run
+   ```
+
+Available commands:
+- `ispmon run`: Starts the monitoring daemon.
+- `ispmon healthcheck`: Checks heartbeat file status.
+- `ispmon version`: Shows version and build details.
 
 ---
 
-## Non-Docker Service Deployment
+## Service Deployment
 
-Service templates with commented placeholders are provided under [`deploy/`](deploy/):
+You can run `ispmon` as a system service.
+Service templates are in the `deploy/` directory.
 
-- **macOS (launchd):**
-  Edit [`deploy/launchd/com.dexterbrylle.ispmon.plist`](deploy/launchd/com.dexterbrylle.ispmon.plist) and install to `~/Library/LaunchAgents/com.dexterbrylle.ispmon.plist`. Load with `launchctl load ~/Library/LaunchAgents/com.dexterbrylle.ispmon.plist`.
-- **Linux (systemd):**
-  Edit [`deploy/systemd/ispmon.service`](deploy/systemd/ispmon.service), copy to `/etc/systemd/system/ispmon.service`, and enable with `sudo systemctl enable --now ispmon`.
+### macOS (launchd)
+
+1. Open `deploy/launchd/com.dexterbrylle.ispmon.plist`.
+2. Change the placeholder values for your username and paths.
+3. Copy the file to `~/Library/LaunchAgents/`.
+4. Load the service:
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.dexterbrylle.ispmon.plist
+   ```
+
+### Linux (systemd)
+
+1. Open `deploy/systemd/ispmon.service`.
+2. Change the placeholder values for your user and paths.
+3. Copy the file to `/etc/systemd/system/ispmon.service`.
+4. Enable and start the service:
+   ```bash
+   sudo systemctl enable --now ispmon
+   ```
 
 ---
 
 ## Configuration Reference
 
-Configuration is managed via environment variables (loaded from `.env` if present).
+The program reads all configuration values from environment variables.
+You can set them in `.env`.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ISP_PLAN_NAME` | **Yes** | *None* | Free text description of your internet plan, displayed in alerts and reports. |
-| `ISP_PLAN_SPEED` | **Yes** | *None* | Advertised download bandwidth in Mbps (e.g. `500`). |
-| `ISP_PLAN_UPLOAD_SPEED` | **Yes** | *None* | Advertised upload bandwidth in Mbps (e.g. `500`). |
-| `ISP_PLAN_THRESHOLD` | **Yes** | *None* | Contractual minimum download Mbps. Speeds below this violate SLA. |
-| `ISP_PLAN_UPLOAD_THRESHOLD` | **Yes** | *None* | Contractual minimum upload Mbps. Speeds below this violate SLA. |
+| `ISP_PLAN_NAME` | **Yes** | *None* | Plan name shown in alerts and reports. |
+| `ISP_PLAN_SPEED` | **Yes** | *None* | Advertised download bandwidth in Mbps. |
+| `ISP_PLAN_UPLOAD_SPEED` | **Yes** | *None* | Advertised upload bandwidth in Mbps. |
+| `ISP_PLAN_THRESHOLD` | **Yes** | *None* | Minimum download speed in Mbps. |
+| `ISP_PLAN_UPLOAD_THRESHOLD` | **Yes** | *None* | Minimum upload speed in Mbps. |
 | `SLA_WINDOW_HOURS` | No | `24` | Rolling evaluation window in hours. |
-| `SLA_VIOLATION_PCT` | No | `20.0` | Percentage threshold. Breach declared if strictly greater than this share of valid checks is below minimum. |
-| `SLA_MIN_COVERAGE` | No | `0.75` | Minimum ratio of expected checks required in window before evaluating SLA (range `(0, 1]`). |
-| `SPEED_ALERT_DOWNLOAD` | No | Plan speed | Download threshold for counting "slow" incidents in summary reports. |
-| `SPEED_ALERT_UPLOAD` | No | Plan speed | Upload threshold for counting "slow" incidents in summary reports. |
-| `CHECK_INTERVAL_MINUTES` | No | `30` | Interval in minutes between speed test measurements. |
-| `SUMMARY_INTERVAL_HOURS` | No | `6` | Interval in hours between periodic summary alerts. |
-| `DAILY_REPORT_TIME` | No | `23:59` | Time of day (`HH:MM` in `TZ`) to dispatch the daily dispute report with CSV & PDF. |
-| `TZ` | No | `UTC` | IANA timezone name (e.g. `America/New_York`, `Asia/Manila`, `UTC`). |
-| `DB_PATH` | No | `data/ispmon.db` | Filesystem path for SQLite database (parent directories created automatically). |
-| `PROBE_TARGETS` | No | `1.1.1.1:443,9.9.9.9:443` | Comma-separated list of `host:port` targets for TCP connectivity checks. |
-| `PROBE_INTERVAL_SECONDS` | No | `60` | Frequency in seconds for connectivity probe rounds. |
-| `PROBE_FAIL_ROUNDS` | No | `3` | Consecutive failed probe rounds required before declaring an outage. |
-| `PROBE_TIMEOUT_SECONDS` | No | `3` | Dial timeout per probe target in seconds. |
-| `DISCORD_WEBHOOK_URL` | No | *Empty* | Discord incoming webhook URL (e.g. `https://discord.com/api/webhooks/...`). Empty disables Discord. |
-| `SMTP_SERVER` | No | *Empty* | SMTP server hostname (e.g. `smtp.gmail.com`). |
+| `SLA_VIOLATION_PCT` | No | `20.0` | Violation percentage to declare a breach. |
+| `SLA_MIN_COVERAGE` | No | `0.75` | Minimum ratio of checks needed to evaluate. |
+| `SPEED_ALERT_DOWNLOAD` | No | Plan speed | Download threshold for slow check counts. |
+| `SPEED_ALERT_UPLOAD` | No | Plan speed | Upload threshold for slow check counts. |
+| `CHECK_INTERVAL_MINUTES` | No | `30` | Minutes between speed tests. |
+| `SUMMARY_INTERVAL_HOURS` | No | `6` | Hours between summary alerts. |
+| `DAILY_REPORT_TIME` | No | `23:59` | Daily report time (`HH:MM` in `TZ`). |
+| `TZ` | No | `UTC` | IANA timezone name. |
+| `DB_PATH` | No | `data/ispmon.db` | File path for SQLite database. |
+| `PROBE_TARGETS` | No | `1.1.1.1:443,9.9.9.9:443` | Comma-separated list of TCP targets. |
+| `PROBE_INTERVAL_SECONDS` | No | `60` | Seconds between probe rounds. |
+| `PROBE_FAIL_ROUNDS` | No | `3` | Failed rounds needed to open an outage. |
+| `PROBE_TIMEOUT_SECONDS` | No | `3` | Dial timeout per target in seconds. |
+| `DISCORD_WEBHOOK_URL` | No | *Empty* | Discord webhook URL. Leave empty to disable. |
+| `SMTP_SERVER` | No | *Empty* | SMTP server hostname. |
 | `SMTP_PORT` | No | `587` | SMTP port (uses STARTTLS). |
-| `SMTP_USER` | No | *Empty* | SMTP username / email address. |
-| `SMTP_PASSWORD` | No | *Empty* | SMTP password or app password. Never logged. |
-| `EMAIL_RECIPIENT` | No | *Empty* | Destination recipient address for email reports. |
+| `SMTP_USER` | No | *Empty* | SMTP username. |
+| `SMTP_PASSWORD` | No | *Empty* | SMTP password. Never logged. |
+| `EMAIL_RECIPIENT` | No | *Empty* | Recipient email address for reports. |
 
-*Note: Email notifications are activated only when `SMTP_SERVER`, `SMTP_USER`, `SMTP_PASSWORD`, and `EMAIL_RECIPIENT` are all configured.*
+*Note: Email notifications activate only when server, port, user, password, and recipient are set.*
 
 ---
 
-## How Detection Works: Two-Engine Architecture
+## Two-Engine Architecture
 
-`ispmon` strictly separates speed measurements from connectivity drops:
+`ispmon` separates speed tests from outage detection.
+This separation prevents connection drops from corrupting speed calculations.
 
 ```
 +-----------------------------------------------------------------------+
@@ -161,50 +196,63 @@ Configuration is managed via environment variables (loaded from `.env` if presen
 +-----------------------------------------------------------------------+
 ```
 
-### 1. The Outage Engine (`internal/probe` & `internal/outage`)
-- Dials `PROBE_TARGETS` (TCP) every 60 seconds with a 3-second timeout.
-- A round is failed **only if ALL targets fail**. If one target responds, connectivity is considered up.
-- An outage episode opens after **3 consecutive failed rounds**. Crucially, the episode's `started_at` timestamp is pinned to the time of the **first failed round**, capturing the true outage duration.
-- Closes immediately on the first successful round and computes total downtime seconds.
-- Exactly one alert on outage start and one on restoration.
+### 1. Outage Engine
 
-### 2. The Speed SLA Engine (`internal/sla`)
-- Runs after each successful check (`status='ok'`).
-- Flags a check as below contractual minimum if `download < ISP_PLAN_THRESHOLD` or `upload < ISP_PLAN_UPLOAD_THRESHOLD`.
-- Assesses valid checks across the rolling window (`SLA_WINDOW_HOURS`). Failed tests (`measurement_error`) and outages are excluded from the ratio so they do not dilute or corrupt speed statistics.
-- Coverage Guard: SLA evaluation is deferred (`insufficient_data`) until at least 75% (`SLA_MIN_COVERAGE`) of expected checks exist in the rolling window.
-- If violation rate exceeds `SLA_VIOLATION_PCT` (strictly `> 20.0%`), an SLA breach episode opens, sending **one alert with CSV evidence**.
-- Subsequent slow checks update the incident statistics silently without spamming notifications.
-- When speeds stabilize back within contractual standards, the breach episode closes and dispatches a recovery notification.
+- The probe dials all targets in `PROBE_TARGETS` with TCP every 60 seconds.
+- A round fails only if all targets fail to connect.
+- An outage episode starts after 3 consecutive failed rounds.
+- The start time is set to the time of the first failed round.
+- The outage episode closes on the first successful round.
+- The engine calculates the total downtime in seconds.
+- The engine sends one alert when the outage starts.
+- The engine sends one alert when the connection restores.
+
+### 2. Speed SLA Engine
+
+- The engine evaluates only successful speed checks (`status='ok'`).
+- A check is below threshold if download or upload speed is below minimum.
+- The engine checks records in the rolling window (`SLA_WINDOW_HOURS`).
+- Failed speed checks and outages do not count in the speed ratio.
+- The engine requires at least 75% coverage before it evaluates SLA compliance.
+- A breach occurs when more than 20% of valid checks violate the threshold.
+- The engine sends one breach alert with CSV evidence.
+- The engine updates ongoing breach counts without sending duplicate messages.
+- When speeds return to standard levels, the engine sends a resolution alert.
 
 ---
 
-## Notifications & Evidence
+## Notifications and Evidence
 
 ### Discord Alerts
-Compact embed cards delivered directly to your Discord channel:
-- **Red Card:** Fired on SLA breach declaration (displaying worst speeds, violation %, evaluation window, and direct Ookla `speedtest.net` verification URL) and on outage detection.
-- **Green Card:** Fired when SLA standards recover or connectivity is restored (detailing total incident duration).
 
-### Email & Attachments
-Delivered via SMTP STARTTLS on port 587:
-- **SLA Breach Incident:** HTML summary table with in-memory CSV evidence attachment ready to submit to your ISP support ticket.
-- **Daily 24-Hour Dispute Report:** Scheduled at `DAILY_REPORT_TIME` in your local `TZ`. Includes an HTML summary, a complete raw CSV log of all checks (with server names and official verification URLs), and a clean, dispute-ready PDF summary report.
+The program sends embed cards to Discord:
+- **Red Card:** Sent when an SLA breach starts or when an outage starts.
+- **Green Card:** Sent when an SLA breach resolves or when an outage ends.
+
+### Email Reports
+
+The program sends emails through SMTP with STARTTLS on port 587:
+- **Breach Alert:** Contains an HTML summary and an in-memory CSV evidence file.
+- **Daily Report:** Sent at `DAILY_REPORT_TIME`. Contains an HTML summary, a full CSV file, and a PDF document.
 
 ---
 
-## Database & Backups
+## Database and Backups
 
-`ispmon` stores all data in a single embedded SQLite database file (`data/ispmon.db`), using Write-Ahead Logging (`PRAGMA journal_mode=WAL;`) and standard database migrations (`PRAGMA user_version`).
+`ispmon` stores all data in a local SQLite file (`data/ispmon.db`).
+The database uses Write-Ahead Logging (WAL) mode.
 
-### Safe Backups
-Because SQLite in WAL mode writes active transactions to `ispmon.db-wal`:
-- **Simple copy (when daemon is stopped):**
+### How to Back Up the Database
+
+When you copy a database in WAL mode, you must handle active write files.
+
+- **Offline copy (when the daemon is stopped):**
   ```bash
   cp data/ispmon.db /path/to/backup/ispmon.db
   ```
-- **Live atomic backup (while daemon is running):**
-  Use SQLite's online backup API or CLI:
+
+- **Online copy (while the daemon runs):**
+  Use the SQLite backup command to create a safe copy:
   ```bash
   sqlite3 data/ispmon.db ".backup /path/to/backup/ispmon-backup.db"
   ```
@@ -213,18 +261,28 @@ Because SQLite in WAL mode writes active transactions to `ispmon.db-wal`:
 
 ## Troubleshooting
 
-- **`speedtest CLI not found in PATH`:**
-  `ispmon` requires the official Ookla binary. Verify installation with `speedtest --version` and ensure it is located in your system `PATH`.
-- **Healthcheck reports unhealthy:**
-  `ispmon healthcheck` verifies that `data/.heartbeat` was updated within `2 * CHECK_INTERVAL_MINUTES`. If the process terminates or hangs, the heartbeat file goes stale and Docker marks the container unhealthy.
-- **SMTP Authentication Errors:**
-  Ensure you are using port `587` with STARTTLS. For Gmail or Google Workspace accounts, generate and use a dedicated **App Password**.
+- **Error: `speedtest CLI not found in PATH`:**
+  Install the official Ookla CLI tool.
+  Make sure the binary is in your system `PATH`.
+
+- **Error: Health check failure:**
+  `ispmon healthcheck` checks if `.heartbeat` is fresh.
+  If the daemon stops, the file becomes old and the health check fails.
+
+- **SMTP connection failure:**
+  Make sure port 587 is open.
+  Make sure STARTTLS is supported.
+  Use an application password for Google accounts.
 
 ---
 
-## License & Ookla Notice
+## License and Ookla Notice
 
-`ispmon` is open source software released under the [MIT License](LICENSE), Copyright (c) 2026 Dexter Brylle.
+`ispmon` is open-source software under the [MIT License](LICENSE).
+Copyright (c) 2026 Dexter Brylle.
 
-**Notice regarding Ookla Speedtest:**
-The Ookla `speedtest` CLI binary is not bundled, modified, or redistributed with this repository. Users install the binary directly from Ookla's distribution channels subject to Ookla's [Terms of Use](https://www.speedtest.net/about/terms) and Privacy Policy. `ispmon` executes the CLI with `--accept-license --accept-gdpr` on behalf of the user.
+**Ookla Speedtest Notice:**
+The Ookla binary is not included in this repository.
+Users install the binary directly from official Ookla repositories.
+Users must accept the Ookla Terms of Use and Privacy Policy.
+`ispmon` runs the CLI with `--accept-license` and `--accept-gdpr` for the user.
