@@ -1,0 +1,29 @@
+{
+  "type": "result",
+  "timestamp": "2026-10-11T04:45:30Z",
+  "ping": {
+    "jitter": 2.15,
+    "latency": 15.3
+  },
+  "download": {
+    "bandwidth": 37500000,
+    "bytes": 300000000,
+    "elapsed": 8000
+  },
+  "upload": {
+    "bandwidth": 25000000,
+    "bytes": 200000000,
+    "elapsed": 8000
+  },
+  "isp": "Globe Telecom",
+  "server": {
+    "id": 54321,
+    "name": "Makati High Speed",
+    "location": "Makati",
+    "country": "Philippines"
+  },
+  "result": {
+    "id": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+    "url": "https://www.speedtest.net/result/c/f9e8d7c6-b5a4-3210-fedc-ba9876543210"
+  }
+}

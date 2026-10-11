@@ -1,0 +1,41 @@
+{
+  "type": "result",
+  "timestamp": "2026-10-11T04:15:30Z",
+  "ping": {
+    "jitter": 1.25,
+    "latency": 8.42
+  },
+  "download": {
+    "bandwidth": 62500000,
+    "bytes": 500000000,
+    "elapsed": 8000
+  },
+  "upload": {
+    "bandwidth": 60000000,
+    "bytes": 480000000,
+    "elapsed": 8000
+  },
+  "packetLoss": 0.0,
+  "isp": "Globe Telecom",
+  "interface": {
+    "internalIp": "192.168.1.100",
+    "name": "en0",
+    "macAddr": "00:11:22:33:44:55",
+    "isVpn": false,
+    "externalIp": "120.28.1.2"
+  },
+  "server": {
+    "id": 12345,
+    "host": "speedtest.example.com",
+    "port": 8080,
+    "name": "Manila Premier Server",
+    "location": "Manila",
+    "country": "Philippines",
+    "ip": "120.28.10.20"
+  },
+  "result": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+    "url": "https://www.speedtest.net/result/c/a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+    "persisted": true
+  }
+}

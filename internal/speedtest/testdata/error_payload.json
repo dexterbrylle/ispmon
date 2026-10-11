@@ -1,0 +1,6 @@
+{
+  "type": "log",
+  "timestamp": "2026-10-11T05:00:00Z",
+  "level": "error",
+  "message": "Configuration - Cannot retrieve configuration from speedtest.net"
+}
