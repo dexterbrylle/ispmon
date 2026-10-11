@@ -1,5 +1,5 @@
 # Multi-stage build for ispmon
-FROM golang:1.22 AS builder
+FROM golang:1.22.12 AS builder
 
 WORKDIR /src
 ENV GOTOOLCHAIN=auto
@@ -21,11 +21,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Final runtime image based on debian:bookworm-slim
 FROM debian:bookworm-slim
 
-# Install official Ookla speedtest CLI at build time (fails build if install fails)
+# Install official Ookla speedtest CLI at build time via signed apt repo with pinned version
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
-    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | bash && \
-    apt-get install -y speedtest && \
+    apt-get install -y --no-install-recommends curl ca-certificates gnupg && \
+    install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL https://packagecloud.io/ookla/speedtest-cli/gpgkey | gpg --dearmor -o /etc/apt/keyrings/ookla_speedtest-cli-archive-keyring.gpg && \
+    chmod 0644 /etc/apt/keyrings/ookla_speedtest-cli-archive-keyring.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/ookla_speedtest-cli-archive-keyring.gpg] https://packagecloud.io/ookla/speedtest-cli/debian/ bookworm main" > /etc/apt/sources.list.d/ookla_speedtest-cli.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends speedtest=1.2.0* && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
