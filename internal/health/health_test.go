@@ -51,4 +51,41 @@ func TestHealth_Lifecycle(t *testing.T) {
 	if len(content) == 0 {
 		t.Fatalf("heartbeat content is empty")
 	}
+
+	// 5. Probe heartbeat path verification
+	probeHbPath := health.ProbeHeartbeatPath(dbPath)
+	expectedProbePath := filepath.Join(tmpDir, "data", ".probe_heartbeat")
+	if probeHbPath != expectedProbePath {
+		t.Fatalf("expected probe heartbeat path %q, got %q", expectedProbePath, probeHbPath)
+	}
+
+	// 6. CheckHealth fails when probe heartbeat is missing
+	if err := health.CheckHealth(hbPath, probeHbPath, 5*time.Minute, 2*time.Minute, now); err == nil {
+		t.Fatalf("expected CheckHealth to fail when probe heartbeat missing")
+	}
+
+	// 7. Write probe heartbeat
+	if err := health.WriteHeartbeat(probeHbPath); err != nil {
+		t.Fatalf("failed writing probe heartbeat: %v", err)
+	}
+
+	// 8. CheckHealth passes when both are fresh
+	if err := health.CheckHealth(hbPath, probeHbPath, 5*time.Minute, 2*time.Minute, now); err != nil {
+		t.Fatalf("expected CheckHealth to pass: %v", err)
+	}
+
+	// 9. CheckHealth fails when probe heartbeat is stale
+	probeFuture := now.Add(3 * time.Minute)
+	if err := health.CheckHealth(hbPath, probeHbPath, 5*time.Minute, 2*time.Minute, probeFuture); err == nil {
+		t.Fatalf("expected CheckHealth to fail when probe heartbeat is stale")
+	}
+
+	// 10. CheckHealth fails when speed heartbeat is stale
+	speedFuture := now.Add(6 * time.Minute)
+	// Refresh probe heartbeat so only speed heartbeat is stale
+	_ = health.WriteHeartbeat(probeHbPath)
+	if err := health.CheckHealth(hbPath, probeHbPath, 5*time.Minute, 2*time.Minute, speedFuture); err == nil {
+		t.Fatalf("expected CheckHealth to fail when speed heartbeat is stale")
+	}
 }
+

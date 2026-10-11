@@ -53,15 +53,19 @@ func runHealthcheck() {
 	cfg, err := config.Load()
 	dbPath := "data/ispmon.db"
 	checkInterval := 30
+	probeInterval := 60
 	if err == nil && cfg != nil {
 		dbPath = cfg.DBPath
 		checkInterval = cfg.CheckIntervalMinutes
+		probeInterval = cfg.ProbeIntervalSeconds
 	}
 
-	hbPath := health.HeartbeatPath(dbPath)
-	maxAge := time.Duration(2*checkInterval) * time.Minute
+	speedHbPath := health.HeartbeatPath(dbPath)
+	probeHbPath := health.ProbeHeartbeatPath(dbPath)
+	speedMaxAge := time.Duration(2*checkInterval) * time.Minute
+	probeMaxAge := time.Duration(2*probeInterval) * time.Second
 
-	if err := health.CheckHeartbeat(hbPath, maxAge, time.Now().UTC()); err != nil {
+	if err := health.CheckHealth(speedHbPath, probeHbPath, speedMaxAge, probeMaxAge, time.Now().UTC()); err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
 		os.Exit(1)
 	}

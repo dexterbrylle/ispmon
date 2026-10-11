@@ -27,10 +27,11 @@ type Engine struct {
 	Runner        speedtest.Runner
 	Prober        *probe.Prober
 	OutageSM      *outage.StateMachine
-	Dispatcher    *notify.Dispatcher
-	HeartbeatPath string
-	Logger        *slog.Logger
-	Now           func() time.Time
+	Dispatcher         *notify.Dispatcher
+	HeartbeatPath      string
+	ProbeHeartbeatPath string
+	Logger             *slog.Logger
+	Now                func() time.Time
 
 	notifyMu   sync.Mutex
 	notifyWG   sync.WaitGroup
@@ -53,14 +54,15 @@ func New(
 		logger = slog.Default()
 	}
 	return &Engine{
-		Config:        cfg,
-		Store:         st,
-		Runner:        runner,
-		Prober:        prober,
-		OutageSM:      outageSM,
-		Dispatcher:    dispatcher,
-		HeartbeatPath: health.HeartbeatPath(cfg.DBPath),
-		Logger:        logger,
+		Config:             cfg,
+		Store:              st,
+		Runner:             runner,
+		Prober:             prober,
+		OutageSM:           outageSM,
+		Dispatcher:         dispatcher,
+		HeartbeatPath:      health.HeartbeatPath(cfg.DBPath),
+		ProbeHeartbeatPath: health.ProbeHeartbeatPath(cfg.DBPath),
+		Logger:             logger,
 		Now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -280,6 +282,12 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 	if res.OK {
 		e.retryNotifications(ctx)
 	}
+
+	// Touch probe heartbeat on probe round completion
+	if hbErr := health.WriteHeartbeat(e.ProbeHeartbeatPath); hbErr != nil {
+		e.Logger.Warn("failed writing probe heartbeat", "path", e.ProbeHeartbeatPath, "error", hbErr)
+	}
+
 	return nil
 }
 
@@ -348,6 +356,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	// Touch heartbeat at startup
 	if err := health.WriteHeartbeat(e.HeartbeatPath); err != nil {
 		e.Logger.Warn("failed writing startup heartbeat", "error", err)
+	}
+	if err := health.WriteHeartbeat(e.ProbeHeartbeatPath); err != nil {
+		e.Logger.Warn("failed writing startup probe heartbeat", "error", err)
 	}
 
 	// Run initial check immediately

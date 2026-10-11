@@ -7,13 +7,22 @@ import (
 	"time"
 )
 
-// HeartbeatPath returns the location of the heartbeat file adjacent to dbPath.
+// HeartbeatPath returns the location of the speed check heartbeat file adjacent to dbPath.
 func HeartbeatPath(dbPath string) string {
 	dir := filepath.Dir(dbPath)
 	if dir == "" || dir == "." {
 		return ".heartbeat"
 	}
 	return filepath.Join(dir, ".heartbeat")
+}
+
+// ProbeHeartbeatPath returns the location of the probe heartbeat file adjacent to dbPath.
+func ProbeHeartbeatPath(dbPath string) string {
+	dir := filepath.Dir(dbPath)
+	if dir == "" || dir == "." {
+		return ".probe_heartbeat"
+	}
+	return filepath.Join(dir, ".probe_heartbeat")
 }
 
 // WriteHeartbeat touches/writes the heartbeat file with the current UTC timestamp.
@@ -49,3 +58,16 @@ func CheckHeartbeat(heartbeatPath string, maxAge time.Duration, now time.Time) e
 
 	return nil
 }
+
+// CheckHealth verifies that both the speed check heartbeat and the probe heartbeat
+// exist and are within their respective maximum allowed ages.
+func CheckHealth(speedHbPath, probeHbPath string, speedMaxAge, probeMaxAge time.Duration, now time.Time) error {
+	if err := CheckHeartbeat(speedHbPath, speedMaxAge, now); err != nil {
+		return fmt.Errorf("speed test heartbeat failed: %w", err)
+	}
+	if err := CheckHeartbeat(probeHbPath, probeMaxAge, now); err != nil {
+		return fmt.Errorf("probe heartbeat failed: %w", err)
+	}
+	return nil
+}
+

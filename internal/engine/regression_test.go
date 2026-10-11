@@ -3,10 +3,12 @@ package engine
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/dexterbrylle/isp-speed-monitor/internal/config"
+	"github.com/dexterbrylle/isp-speed-monitor/internal/health"
 	"github.com/dexterbrylle/isp-speed-monitor/internal/notify"
 	"github.com/dexterbrylle/isp-speed-monitor/internal/outage"
 	"github.com/dexterbrylle/isp-speed-monitor/internal/probe"
@@ -333,5 +335,43 @@ func TestEngine_RunRetentionPrune(t *testing.T) {
 	// Running again on the same day is a no-op
 	if err := e.RunRetentionPrune(ctx); err != nil {
 		t.Fatalf("unexpected error in second RunRetentionPrune: %v", err)
+	}
+}
+
+func TestEngine_ProbeHeartbeatTouched(t *testing.T) {
+	st, err := store.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "ispmon.db")
+	cfg := &config.Config{
+		DBPath:               dbPath,
+		ProbeIntervalSeconds: 60,
+		ProbeFailRounds:      3,
+	}
+
+	p := probe.New([]string{"127.0.0.1:443"}, 1)
+	p.Dial = func(context.Context, string, string) error { return nil }
+
+	e := New(cfg, st, nil, p, outage.NewStateMachine(3, nil), notify.NewDispatcher(nil, nil), nil)
+
+	ctx := context.Background()
+
+	// Prior to running probe, probe heartbeat should not exist
+	if err := health.CheckHeartbeat(e.ProbeHeartbeatPath, time.Minute, time.Now()); err == nil {
+		t.Fatal("expected probe heartbeat to not exist yet")
+	}
+
+	// Run probe round
+	if err := e.RunProbeRound(ctx); err != nil {
+		t.Fatalf("unexpected error in RunProbeRound: %v", err)
+	}
+
+	// Probe heartbeat must now exist and be fresh
+	if err := health.CheckHeartbeat(e.ProbeHeartbeatPath, time.Minute, time.Now().UTC()); err != nil {
+		t.Fatalf("expected probe heartbeat to be fresh: %v", err)
 	}
 }
