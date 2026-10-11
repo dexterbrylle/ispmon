@@ -87,6 +87,10 @@ func ApplyMigrations(db *sql.DB) error {
 			return fmt.Errorf("failed beginning transaction for migration %d: %w", targetVersion, err)
 		}
 
+		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", targetVersion)); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		if err := migrations[i](tx); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("failed migration %d: %w", targetVersion, err)
@@ -96,9 +100,6 @@ func ApplyMigrations(db *sql.DB) error {
 			return fmt.Errorf("failed committing migration %d: %w", targetVersion, err)
 		}
 
-		if err := SetUserVersion(db, targetVersion); err != nil {
-			return err
-		}
 	}
 
 	return nil
