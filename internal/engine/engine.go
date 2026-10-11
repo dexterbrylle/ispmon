@@ -222,9 +222,6 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 			e.OutageSM.SetActiveEpisodeID(id)
 		}
 
-		event := notify.BuildOutageStartedEvent(e.Config.ISPPlanName, action.Reason)
-		e.Dispatcher.Dispatch(ctx, event)
-
 	case outage.ActionRestore:
 		e.Logger.Info("connectivity restored, closing outage episode",
 			"episode_id", action.EpisodeID,
@@ -237,7 +234,7 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 		}
 
 		event := notify.BuildOutageRestoredEvent(e.Config.ISPPlanName, action.DurationSeconds)
-		e.Dispatcher.Dispatch(ctx, event)
+		go e.Dispatcher.Dispatch(ctx, event)
 	}
 
 	return nil

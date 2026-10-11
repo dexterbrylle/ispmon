@@ -322,8 +322,8 @@ func TestPipeline_Integration(t *testing.T) {
 	}
 
 	events = recorder.getEvents()
-	if len(events) != 1 || events[0].Kind != notify.EventOutageStarted {
-		t.Fatalf("expected 1 outage_started event, got %v", events)
+	if len(events) != 0 {
+		t.Fatalf("expected no alert while offline, got %v", events)
 	}
 
 	// Round 4: Still down -> No duplicate alert
@@ -331,7 +331,7 @@ func TestPipeline_Integration(t *testing.T) {
 	if err := eng.RunProbeRound(ctx); err != nil {
 		t.Fatalf("probe round 4 failed: %v", err)
 	}
-	if len(recorder.getEvents()) != 1 {
+	if len(recorder.getEvents()) != 0 {
 		t.Errorf("expected no duplicate outage alert while still down")
 	}
 
@@ -351,8 +351,12 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("expected outage episode to be closed after connectivity restored")
 	}
 
+	deadline := time.Now().Add(time.Second)
+	for len(recorder.getEvents()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	events = recorder.getEvents()
-	if len(events) != 2 || events[1].Kind != notify.EventOutageRestored {
+	if len(events) != 1 || events[0].Kind != notify.EventOutageRestored {
 		t.Fatalf("expected 1 outage_restored event, got %v", events)
 	}
 }
