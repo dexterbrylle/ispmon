@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +29,14 @@ var (
 )
 
 func main() {
-	args := os.Args[1:]
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	return runWithIO(args, os.Stdout, os.Stderr)
+}
+
+func runWithIO(args []string, stdout, stderr io.Writer) int {
 	cmd := "run"
 	if len(args) > 0 {
 		cmd = args[0]
@@ -34,22 +44,22 @@ func main() {
 
 	switch cmd {
 	case "version", "--version", "-v":
-		fmt.Printf("ispmon %s (commit %s, built %s)\n", version, commit, date)
-		return
+		fmt.Fprintf(stdout, "ispmon %s (commit %s, built %s)\n", version, commit, date)
+		return 0
 
 	case "healthcheck":
-		runHealthcheck()
+		return runHealthcheck(stdout, stderr)
 
 	case "run":
-		runDaemon()
+		return runDaemon(stdout, stderr)
 
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\nUsage: ispmon [run|healthcheck|version]\n", cmd)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "unknown command %q\nUsage: ispmon [run|healthcheck|version]\n", cmd)
+		return 1
 	}
 }
 
-func runHealthcheck() {
+func runHealthcheck(stdout, stderr io.Writer) int {
 	cfg, err := config.Load()
 	dbPath := "data/ispmon.db"
 	checkInterval := 30
@@ -58,6 +68,20 @@ func runHealthcheck() {
 		dbPath = cfg.DBPath
 		checkInterval = cfg.CheckIntervalMinutes
 		probeInterval = cfg.ProbeIntervalSeconds
+	} else {
+		if envDB := strings.TrimSpace(os.Getenv("DB_PATH")); envDB != "" {
+			dbPath = envDB
+		}
+		if envCI := strings.TrimSpace(os.Getenv("CHECK_INTERVAL_MINUTES")); envCI != "" {
+			if v, err := strconv.Atoi(envCI); err == nil && v > 0 {
+				checkInterval = v
+			}
+		}
+		if envPI := strings.TrimSpace(os.Getenv("PROBE_INTERVAL_SECONDS")); envPI != "" {
+			if v, err := strconv.Atoi(envPI); err == nil && v > 0 {
+				probeInterval = v
+			}
+		}
 	}
 
 	speedHbPath := health.HeartbeatPath(dbPath)
@@ -66,25 +90,25 @@ func runHealthcheck() {
 	probeMaxAge := time.Duration(2*probeInterval) * time.Second
 
 	if err := health.CheckHealth(speedHbPath, probeHbPath, speedMaxAge, probeMaxAge, time.Now().UTC()); err != nil {
-		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "healthcheck failed: %v\n", err)
+		return 1
 	}
 
-	fmt.Println("healthcheck OK")
-	os.Exit(0)
+	fmt.Fprintln(stdout, "healthcheck OK")
+	return 0
 }
 
-func runDaemon() {
+func runDaemon(stdout, stderr io.Writer) int {
 	// Logging via log/slog to stdout only
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	logger := slog.New(slog.NewTextHandler(stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 1
 	}
 
 	logger.Info("configuration loaded successfully", "plan_name", cfg.ISPPlanName)
@@ -94,7 +118,7 @@ func runDaemon() {
 	binPath, err := speedtest.LookPath()
 	if err != nil {
 		logger.Error(err.Error())
-		os.Exit(1)
+		return 1
 	}
 	logger.Info("located speedtest CLI binary", "path", binPath)
 
@@ -102,7 +126,7 @@ func runDaemon() {
 	st, err := store.New(cfg.DBPath)
 	if err != nil {
 		logger.Error("failed opening database", "path", cfg.DBPath, "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer st.Close()
 	logger.Info("database opened and migrations applied", "path", cfg.DBPath)
@@ -142,7 +166,9 @@ func runDaemon() {
 	logger.Info("starting ispmon daemon loops")
 	if err := eng.Start(ctx); err != nil {
 		logger.Error("engine error", "error", err)
+		return 1
 	}
 
 	logger.Info("ispmon daemon exited cleanly")
+	return 0
 }
