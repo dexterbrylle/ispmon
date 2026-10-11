@@ -156,6 +156,7 @@ You can set them in `.env`.
 | `DAILY_REPORT_TIME` | No | `23:59` | Daily report time (`HH:MM` in `TZ`). |
 | `TZ` | No | `UTC` | IANA timezone name. |
 | `DB_PATH` | No | `data/ispmon.db` | File path for SQLite database. |
+| `RETENTION_DAYS` | No | `90` | Data retention period in days (`0` = keep forever). |
 | `PROBE_TARGETS` | No | `1.1.1.1:443,9.9.9.9:443` | Comma-separated list of TCP targets. |
 | `PROBE_INTERVAL_SECONDS` | No | `60` | Seconds between probe rounds. |
 | `PROBE_FAIL_ROUNDS` | No | `3` | Failed rounds needed to open an outage. |
@@ -209,15 +210,18 @@ This separation prevents connection drops from corrupting speed calculations.
 
 ### 2. Speed SLA Engine
 
-- The engine evaluates only successful speed checks (`status='ok'`).
-- A check is below threshold if download or upload speed is below minimum.
-- The engine checks records in the rolling window (`SLA_WINDOW_HOURS`).
-- Failed speed checks and outages do not count in the speed ratio.
-- The engine requires at least 75% coverage before it evaluates SLA compliance.
-- A breach occurs when more than 20% of valid checks violate the threshold.
-- The engine sends one breach alert with CSV evidence.
-- The engine updates ongoing breach counts without sending duplicate messages.
-- When speeds return to standard levels, the engine sends a resolution alert.
+- **Valid Checks Only:** The engine evaluates only successful speed checks (`status='ok'`). Speed tests that fail with errors (`measurement_error`) or during probe outages are excluded from the speed ratio.
+- **Threshold Evaluation:** A check is below threshold if either download or upload speed falls below the contractual threshold (`ISP_PLAN_THRESHOLD` or `ISP_PLAN_UPLOAD_THRESHOLD`).
+- **Rolling Window & ~18h Warm-Up:**
+  - With default settings (`SLA_WINDOW_HOURS=24`, `CHECK_INTERVAL_MINUTES=30`, `SLA_MIN_COVERAGE=0.75`), the expected number of checks in a window is `(24 * 60) / 30 = 48` checks.
+  - The engine requires at least 75% coverage: `int(48 * 0.75) = 36` valid checks before evaluating SLA compliance.
+  - At a 30-minute interval, collecting 36 valid checks takes **~18 hours** of continuous monitoring. During this warm-up period, the status is `insufficient_data` and no breach can open or resolve.
+- **Breach Declaration:** A breach occurs when strictly greater than `SLA_VIOLATION_PCT` (default: 20%) of valid checks in the window violate the speed threshold. The engine opens an episode and dispatches one alert with CSV evidence.
+- **Silent Metric Updates:** While a breach episode remains open, subsequent checks update breach metrics (worst speeds, violation percentage, check counts) silently without sending duplicate alert cards.
+- **Recovery & Insufficient Data Invariants:**
+  - An open breach resolves only when sufficient valid checks exist (`>= 36`) and the violation percentage drops to standard levels (`<= 20%`). When resolved, the engine closes the episode and sends a resolution notice.
+  - **No Resolution on Insufficient Data:** An open breach cannot resolve while data is insufficient (for example, during a long connectivity outage or daemon downtime).
+  - **Design Decision — No Auto-Closing:** Open breaches do **not** auto-close when data is insufficient. A resolution notification represents verified recovery of service. Auto-closing during an outage or when data is missing would produce false recovery notices and split a single continuous service failure into fragmented episodes, undermining evidence needed for ISP disputes. Instead, the breach remains open until valid test measurements confirm that speeds have returned to contractual levels.
 
 ---
 
