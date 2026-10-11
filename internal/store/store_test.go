@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -473,6 +474,72 @@ func TestStore_PruneOldData(t *testing.T) {
 	}
 	if activeOutage == nil {
 		t.Fatal("expected active open outage to be preserved")
+	}
+}
+
+func TestStore_TimestampUTCZInvariant(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Non-UTC timestamp with positive offset (Asia/Tokyo +09:00)
+	tokyoLoc := time.FixedZone("JST", 9*3600)
+	tokyoTime := time.Date(2026, 10, 11, 18, 30, 45, 0, tokyoLoc) // 09:30:45 UTC
+
+	// Non-UTC timestamp with negative offset (America/New_York -04:00)
+	nyLoc := time.FixedZone("EDT", -4*3600)
+	nyTime := time.Date(2026, 10, 11, 5, 30, 45, 0, nyLoc) // 09:30:45 UTC
+
+	c1 := &store.NetworkCheck{
+		Timestamp: tokyoTime,
+		Status:    "ok",
+		Engine:    "ookla-cli",
+	}
+	id1, err := s.SaveCheck(ctx, c1)
+	if err != nil {
+		t.Fatalf("failed saving check 1: %v", err)
+	}
+
+	c2 := &store.NetworkCheck{
+		Timestamp: nyTime,
+		Status:    "ok",
+		Engine:    "ookla-cli",
+	}
+	id2, err := s.SaveCheck(ctx, c2)
+	if err != nil {
+		t.Fatalf("failed saving check 2: %v", err)
+	}
+
+	// 1. Direct raw SQL check: verify SQLite stored string format is strictly UTC RFC 3339 ending in "Z"
+	for _, id := range []int64{id1, id2} {
+		var rawTs string
+		if err := s.DB().QueryRowContext(ctx, "SELECT timestamp FROM network_checks WHERE id = ?", id).Scan(&rawTs); err != nil {
+			t.Fatalf("failed querying raw timestamp for check %d: %v", id, err)
+		}
+		if !strings.HasSuffix(rawTs, "Z") {
+			t.Errorf("expected stored timestamp to end in 'Z', got %q", rawTs)
+		}
+		if rawTs != "2026-10-11T09:30:45Z" {
+			t.Errorf("expected raw timestamp '2026-10-11T09:30:45Z', got %q", rawTs)
+		}
+	}
+
+	// 2. String range comparison works properly with UTC bounds
+	start := time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
+	checks, err := s.GetChecksBetween(ctx, start, end)
+	if err != nil {
+		t.Fatalf("failed GetChecksBetween: %v", err)
+	}
+	if len(checks) != 2 {
+		t.Fatalf("expected 2 checks in range, got %d", len(checks))
+	}
+	for _, ch := range checks {
+		if ch.Timestamp.Location() != time.UTC {
+			t.Errorf("expected read check location to be UTC, got %v", ch.Timestamp.Location())
+		}
+		if !ch.Timestamp.Equal(tokyoTime) {
+			t.Errorf("expected time %v to equal %v", ch.Timestamp, tokyoTime)
+		}
 	}
 }
 

@@ -67,6 +67,12 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// DB returns the underlying database handle.
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
+// Invariant: all stored timestamps must be UTC RFC 3339 ("Z") so SQLite string range comparisons remain chronologically valid.
 // SaveCheck persists a network check to SQLite.
 func (s *Store) SaveCheck(ctx context.Context, c *NetworkCheck) (int64, error) {
 	query := `INSERT INTO network_checks (
