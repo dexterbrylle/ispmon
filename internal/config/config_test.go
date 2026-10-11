@@ -206,3 +206,36 @@ func TestConfig_NotifiersAndLogging(t *testing.T) {
 		t.Errorf("expected notifier status in log, got: %s", logOutput)
 	}
 }
+
+func TestDiscordWebhookRequiresHTTPS(t *testing.T) {
+	for _, url := range []string{"http://discord.com/hook", "not-a-url", "https:///hook", "https://"} {
+		t.Run(url, func(t *testing.T) {
+			env := validEnvMap()
+			env["DISCORD_WEBHOOK_URL"] = url
+			if _, err := config.LoadFromLookup(mockLookup(env)); err == nil {
+				t.Fatalf("invalid webhook accepted: %s", url)
+			}
+		})
+	}
+	env := validEnvMap()
+	env["DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/test"
+	if _, err := config.LoadFromLookup(mockLookup(env)); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestPartialSMTPWarnsWithoutSecrets(t *testing.T) {
+	env := validEnvMap()
+	env["SMTP_PASSWORD"] = "do-not-log-this"
+	cfg, err := config.LoadFromLookup(mockLookup(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	cfg.LogNotifiers(slog.New(slog.NewTextHandler(&buf, nil)))
+	if !strings.Contains(buf.String(), "level=WARN") || !strings.Contains(buf.String(), "partial SMTP") {
+		t.Fatalf("missing partial SMTP warning: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "do-not-log-this") {
+		t.Fatal("password logged")
+	}
+}

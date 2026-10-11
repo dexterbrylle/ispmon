@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -64,6 +65,9 @@ func (c *Config) EmailEnabled() bool {
 
 // LogNotifiers logs the active notifiers without exposing any secret tokens or credentials.
 func (c *Config) LogNotifiers(logger *slog.Logger) {
+	if !c.EmailEnabled() && (strings.TrimSpace(c.SMTPServer) != "" || strings.TrimSpace(c.SMTPUser) != "" || strings.TrimSpace(c.SMTPPassword) != "" || strings.TrimSpace(c.EmailRecipient) != "") {
+		logger.Warn("partial SMTP configuration; email notifications disabled")
+	}
 	logger.Info("notifiers configured",
 		"discord_enabled", c.DiscordEnabled(),
 		"smtp_enabled", c.EmailEnabled(),
@@ -276,6 +280,13 @@ func LoadFromLookup(lookup func(string) (string, bool)) (*Config, error) {
 
 	if val, ok := getVal("DISCORD_WEBHOOK_URL"); ok {
 		cfg.DiscordWebhookURL = val
+		if val != "" {
+			parsed, err := url.Parse(val)
+			if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+				errs = append(errs, errors.New("DISCORD_WEBHOOK_URL must be an https URL with a host"))
+			}
+		}
+
 	}
 
 	if val, ok := getVal("SMTP_SERVER"); ok {
