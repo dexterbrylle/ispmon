@@ -25,7 +25,12 @@ func TestDiscordNotifier_ColorsAndPayload(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/") {
+			_ = r.ParseMultipartForm(1 << 20)
+			_ = json.Unmarshal([]byte(r.FormValue("payload_json")), &receivedPayload)
+		} else {
+			_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer ts.Close()
