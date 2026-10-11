@@ -244,3 +244,41 @@ func TestSummaryIntervalSurvivesRestart(t *testing.T) {
 		t.Fatal("duplicate summary")
 	}
 }
+
+func TestOutageRecordedOnRestoreAfterStartFails(t *testing.T) {
+	st, err := store.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	p := probe.New([]string{"test:443"}, 1)
+	up := false
+	p.Dial = func(context.Context, string, string) error {
+		if up {
+			return nil
+		}
+		return errors.New("offline")
+	}
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	p.Now = func() time.Time { return now }
+	e := New(&config.Config{}, st, nil, p, outage.NewStateMachine(1, nil), notify.NewDispatcher(nil, nil), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = e.RunProbeRound(ctx)
+	up = true
+	now = now.Add(time.Minute)
+	if err := e.RunProbeRound(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e.notifyWG.Wait()
+	episodes, err := st.GetOutageEpisodesBetween(context.Background(), now.Add(-time.Hour), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(episodes) != 1 {
+		t.Fatalf("restored outage records = %d, want 1", len(episodes))
+	}
+	if episodes[0].EndedAt == nil || *episodes[0].DurationSeconds != 60 {
+		t.Fatalf("missing restore duration: %+v", episodes[0])
+	}
+}

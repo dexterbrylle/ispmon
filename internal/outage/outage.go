@@ -84,6 +84,9 @@ func (sm *StateMachine) Step(roundOK bool, reason string, now time.Time) Action 
 			}
 		}
 
+		if sm.isOpen && sm.openEpisodeID == 0 {
+			return Action{Kind: ActionOpen, StartedAt: sm.openedAt, Reason: sm.lastReason}
+		}
 		return Action{Kind: ActionNone}
 	}
 

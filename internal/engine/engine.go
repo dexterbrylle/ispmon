@@ -234,16 +234,24 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 			"episode_id", action.EpisodeID,
 			"duration_seconds", action.DurationSeconds,
 		)
-		if action.EpisodeID > 0 {
-			if err := e.Store.EndOutage(ctx, action.EpisodeID, action.EndedAt, action.DurationSeconds); err != nil {
-				e.Logger.Error("failed ending outage episode in store", "error", err)
-			}
-		}
 
+		ep := &store.OutageEpisode{ID: action.EpisodeID, StartedAt: action.StartedAt, Reason: action.Reason}
+		if ep.ID == 0 {
+			id, err := e.Store.StartOutage(ctx, ep)
+			if err != nil {
+				e.Logger.Error("failed recording outage on restore", "error", err)
+				e.OutageSM = outage.NewStateMachine(e.Config.ProbeFailRounds, ep)
+				return err
+			}
+			action.EpisodeID = id
+		}
 		event := notify.BuildOutageRestoredEvent(e.Config.ISPPlanName, action.DurationSeconds)
-		if err := e.Store.QueueNotification(ctx, "outage_episodes", action.EpisodeID, event); err != nil {
+		if err := e.Store.EndOutage(ctx, action.EpisodeID, action.EndedAt, action.DurationSeconds, event); err != nil {
+			e.Logger.Error("failed ending outage episode in store", "error", err)
+			e.OutageSM = outage.NewStateMachine(e.Config.ProbeFailRounds, ep)
 			return err
 		}
+
 	}
 
 	if res.OK {
