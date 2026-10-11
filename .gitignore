@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+bin/
+/ispmon
+
 # Python
 __pycache__/
 *.py[cod]
