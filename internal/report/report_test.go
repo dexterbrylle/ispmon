@@ -166,3 +166,42 @@ func TestReport_BuildPDF(t *testing.T) {
 		t.Fatalf("expected pdf output to begin with '%%PDF', got prefix %q", string(pdfBytes[:10]))
 	}
 }
+
+func TestReport_SummaryText(t *testing.T) {
+	data := sampleData()
+
+	// Default UTC
+	utcText := report.SummaryText(data, time.UTC)
+	expectedUTC := "Performance overview for period 00:00 to 00:00 UTC."
+	if utcText != expectedUTC {
+		t.Errorf("expected UTC summary text %q, got %q", expectedUTC, utcText)
+	}
+
+	// Non-UTC timezone (e.g. New York EDT, -4 hours)
+	nyLoc := time.FixedZone("EDT", -4*3600)
+	nyText := report.SummaryText(data, nyLoc)
+	expectedNY := "Performance overview for period 20:00 to 20:00 EDT."
+	if nyText != expectedNY {
+		t.Errorf("expected EDT summary text %q, got %q", expectedNY, nyText)
+	}
+
+	// Tokyo (+9 hours)
+	tokyoLoc := time.FixedZone("JST", 9*3600)
+	tokyoText := report.SummaryText(data, tokyoLoc)
+	expectedTokyo := "Performance overview for period 09:00 to 09:00 JST."
+	if tokyoText != expectedTokyo {
+		t.Errorf("expected JST summary text %q, got %q", expectedTokyo, tokyoText)
+	}
+}
+
+func TestReport_BuildPDF_WithTimezone(t *testing.T) {
+	data := sampleData()
+	nyLoc := time.FixedZone("EDT", -4*3600)
+	pdfBytes, err := report.BuildPDF(data, nyLoc)
+	if err != nil {
+		t.Fatalf("unexpected error building pdf with custom timezone: %v", err)
+	}
+	if !bytes.HasPrefix(pdfBytes, []byte("%PDF")) {
+		t.Fatalf("expected pdf output to begin with '%%PDF'")
+	}
+}

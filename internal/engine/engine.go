@@ -293,7 +293,11 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 
 // SendPeriodicSummary compiles and sends a summary report for the past N hours.
 func (e *Engine) SendPeriodicSummary(ctx context.Context, hours int) error {
-	now := e.Now().UTC()
+	loc := e.Config.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := e.Now().In(loc)
 	start := now.Add(-time.Duration(hours) * time.Hour)
 
 	checks, err := e.Store.GetChecksBetween(ctx, start, now)
@@ -309,16 +313,22 @@ func (e *Engine) SendPeriodicSummary(ctx context.Context, hours int) error {
 		start, now, checks, breaches, outages, openBreach, openOutage,
 		e.Config.SpeedAlertDownload, e.Config.SpeedAlertUpload,
 		e.Config.ISPPlanName,
+		loc,
 	)
 
 	e.Logger.Info("dispatching periodic network summary", "hours", hours)
 	event := notify.BuildSummaryEvent(summary)
+	event.Body = report.SummaryText(summary, loc)
 	return e.Dispatcher.Dispatch(ctx, event)
 }
 
 // SendDailyReport compiles and sends the 24-hour daily report with CSV and PDF evidence.
 func (e *Engine) SendDailyReport(ctx context.Context) error {
-	now := e.Now().UTC()
+	loc := e.Config.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	now := e.Now().In(loc)
 	start := now.Add(-24 * time.Hour)
 
 	checks, err := e.Store.GetChecksBetween(ctx, start, now)
@@ -334,6 +344,7 @@ func (e *Engine) SendDailyReport(ctx context.Context) error {
 		start, now, checks, breaches, outages, openBreach, openOutage,
 		e.Config.SpeedAlertDownload, e.Config.SpeedAlertUpload,
 		e.Config.ISPPlanName,
+		loc,
 	)
 
 	csvBytes, err := report.BuildCSV(checks)
@@ -341,7 +352,7 @@ func (e *Engine) SendDailyReport(ctx context.Context) error {
 		e.Logger.Error("failed building daily report csv", "error", err)
 	}
 
-	pdfBytes, err := report.BuildPDF(summary, e.Config.Location)
+	pdfBytes, err := report.BuildPDF(summary, loc)
 	if err != nil {
 		e.Logger.Error("failed building daily report pdf", "error", err)
 	}

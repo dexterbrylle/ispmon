@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 type SummaryData struct {
 	PeriodStart          time.Time
 	PeriodEnd            time.Time
+	Location             *time.Location
 	PlanName             string
 	TotalChecks          int
 	OKChecks             int
@@ -35,6 +37,22 @@ type SummaryData struct {
 	Checks               []store.NetworkCheck
 }
 
+// SummaryText renders a one-line overview of the reporting window in the given (or data's) location with the zone abbreviation.
+func SummaryText(data SummaryData, loc *time.Location) string {
+	if loc == nil {
+		if data.Location != nil {
+			loc = data.Location
+		} else if data.PeriodEnd.Location() != nil {
+			loc = data.PeriodEnd.Location()
+		} else {
+			loc = time.UTC
+		}
+	}
+	startStr := data.PeriodStart.In(loc).Format("15:04")
+	endStr := data.PeriodEnd.In(loc).Format("15:04 MST")
+	return fmt.Sprintf("Performance overview for period %s to %s.", startStr, endStr)
+}
+
 // BuildSummaryData calculates aggregated metrics from checks and episodes in [start, end].
 func BuildSummaryData(
 	start, end time.Time,
@@ -45,10 +63,21 @@ func BuildSummaryData(
 	openOutage *store.OutageEpisode,
 	speedAlertDown, speedAlertUp float64,
 	planName string,
+	loc ...*time.Location,
 ) SummaryData {
+	selectedLoc := time.UTC
+	if len(loc) > 0 && loc[0] != nil {
+		selectedLoc = loc[0]
+	} else if end.Location() != nil && end.Location() != time.UTC {
+		selectedLoc = end.Location()
+	} else if start.Location() != nil && start.Location() != time.UTC {
+		selectedLoc = start.Location()
+	}
+
 	data := SummaryData{
-		PeriodStart:       start,
-		PeriodEnd:         end,
+		PeriodStart:       start.In(selectedLoc),
+		PeriodEnd:         end.In(selectedLoc),
+		Location:          selectedLoc,
 		PlanName:          planName,
 		TotalChecks:       len(checks),
 		OpenBreachEpisode: openBreach,

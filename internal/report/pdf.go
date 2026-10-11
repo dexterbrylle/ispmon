@@ -12,7 +12,13 @@ import (
 // Pure function taking SummaryData and returning bytes without file I/O.
 func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	if loc == nil {
-		loc = time.UTC
+		if data.Location != nil {
+			loc = data.Location
+		} else if data.PeriodEnd.Location() != nil {
+			loc = data.PeriodEnd.Location()
+		} else {
+			loc = time.UTC
+		}
 	}
 
 	pdf := fpdf.New("P", "mm", "A4", "")
@@ -78,6 +84,8 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	pdf.CellFormat(0, 6, "2. SLA Breach & Outage Episodes", "B", 1, "L", false, 0, "")
 	pdf.Ln(2)
 
+	zoneAbbr := data.PeriodEnd.In(loc).Format("MST")
+
 	if len(data.BreachEpisodes) == 0 && len(data.OutageEpisodes) == 0 {
 		pdf.SetFont("Arial", "I", 9)
 		pdf.CellFormat(0, 5, "No SLA breach or connectivity outage episodes recorded during this period.", "", 1, "L", false, 0, "")
@@ -86,8 +94,8 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 			pdf.SetFont("Arial", "B", 10)
 			pdf.CellFormat(0, 5, "SLA Breach Episodes:", "", 1, "L", false, 0, "")
 			pdf.SetFont("Arial", "B", 8)
-			pdf.CellFormat(36, 5, "Started", "1", 0, "L", false, 0, "")
-			pdf.CellFormat(36, 5, "Ended", "1", 0, "L", false, 0, "")
+			pdf.CellFormat(36, 5, fmt.Sprintf("Started (%s)", zoneAbbr), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(36, 5, fmt.Sprintf("Ended (%s)", zoneAbbr), "1", 0, "L", false, 0, "")
 			pdf.CellFormat(28, 5, "Worst Down", "1", 0, "R", false, 0, "")
 			pdf.CellFormat(28, 5, "Worst Up", "1", 0, "R", false, 0, "")
 			pdf.CellFormat(28, 5, "Violation %", "1", 0, "R", false, 0, "")
@@ -113,8 +121,8 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 			pdf.SetFont("Arial", "B", 10)
 			pdf.CellFormat(0, 5, "Connectivity Outage Episodes:", "", 1, "L", false, 0, "")
 			pdf.SetFont("Arial", "B", 8)
-			pdf.CellFormat(36, 5, "Started", "1", 0, "L", false, 0, "")
-			pdf.CellFormat(36, 5, "Ended", "1", 0, "L", false, 0, "")
+			pdf.CellFormat(36, 5, fmt.Sprintf("Started (%s)", zoneAbbr), "1", 0, "L", false, 0, "")
+			pdf.CellFormat(36, 5, fmt.Sprintf("Ended (%s)", zoneAbbr), "1", 0, "L", false, 0, "")
 			pdf.CellFormat(24, 5, "Duration", "1", 0, "R", false, 0, "")
 			pdf.CellFormat(90, 5, "Reason", "1", 1, "L", false, 0, "")
 
@@ -149,7 +157,7 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	pdf.Ln(2)
 
 	pdf.SetFont("Arial", "B", 8)
-	pdf.CellFormat(32, 5, "Timestamp", "1", 0, "L", false, 0, "")
+	pdf.CellFormat(32, 5, fmt.Sprintf("Time (%s)", zoneAbbr), "1", 0, "L", false, 0, "")
 	pdf.CellFormat(24, 5, "Status", "1", 0, "L", false, 0, "")
 	pdf.CellFormat(26, 5, "Download", "1", 0, "R", false, 0, "")
 	pdf.CellFormat(26, 5, "Upload", "1", 0, "R", false, 0, "")

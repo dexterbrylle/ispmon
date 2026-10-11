@@ -38,6 +38,7 @@ data/
 *.db-wal
 *.db-shm
 *.sqlite3
+.*heartbeat*
 
 # Reports
 *.pdf

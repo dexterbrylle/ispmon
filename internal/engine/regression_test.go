@@ -263,7 +263,7 @@ func TestOutageRecordedOnRestoreAfterStartFails(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
 	p.Now = func() time.Time { return now }
-	e := New(&config.Config{}, st, nil, p, outage.NewStateMachine(1, nil), notify.NewDispatcher(nil, nil), nil)
+	e := New(&config.Config{DBPath: filepath.Join(t.TempDir(), "ispmon.db")}, st, nil, p, outage.NewStateMachine(1, nil), notify.NewDispatcher(nil, nil), nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_ = e.RunProbeRound(ctx)
@@ -374,4 +374,53 @@ func TestEngine_ProbeHeartbeatTouched(t *testing.T) {
 	if err := health.CheckHeartbeat(e.ProbeHeartbeatPath, time.Minute, time.Now().UTC()); err != nil {
 		t.Fatalf("expected probe heartbeat to be fresh: %v", err)
 	}
+}
+
+func TestEngine_SummaryTimezoneLabel(t *testing.T) {
+	st, err := store.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	var dispatched notify.Event
+	mockNotifier := &recordingNotifier{
+		onNotify: func(e notify.Event) {
+			dispatched = e
+		},
+	}
+
+	nyLoc := time.FixedZone("EDT", -4*3600)
+	cfg := &config.Config{
+		ISPPlanName: "FastFiber",
+		Location:    nyLoc,
+	}
+
+	e := New(cfg, st, nil, nil, nil, notify.NewDispatcher([]notify.Notifier{mockNotifier}, nil), nil)
+	e.Now = func() time.Time {
+		return time.Date(2026, 10, 11, 20, 0, 0, 0, time.UTC) // 16:00 EDT
+	}
+
+	if err := e.SendPeriodicSummary(context.Background(), 6); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 20:00 UTC - 6h = 14:00 UTC = 10:00 EDT
+	// 20:00 UTC = 16:00 EDT
+	expectedBody := "Performance overview for period 10:00 to 16:00 EDT."
+	if dispatched.Body != expectedBody {
+		t.Errorf("expected summary body %q, got %q", expectedBody, dispatched.Body)
+	}
+}
+
+type recordingNotifier struct {
+	onNotify func(notify.Event)
+}
+
+func (r *recordingNotifier) Name() string { return "recorder" }
+func (r *recordingNotifier) Notify(ctx context.Context, e notify.Event) error {
+	if r.onNotify != nil {
+		r.onNotify(e)
+	}
+	return nil
 }
