@@ -274,8 +274,7 @@ func (e *Engine) SendPeriodicSummary(ctx context.Context, hours int) error {
 
 	e.Logger.Info("dispatching periodic network summary", "hours", hours)
 	event := notify.BuildSummaryEvent(summary)
-	e.Dispatcher.Dispatch(ctx, event)
-	return nil
+	return e.Dispatcher.Dispatch(ctx, event)
 }
 
 // SendDailyReport compiles and sends the 24-hour daily report with CSV and PDF evidence.
@@ -381,14 +380,15 @@ func (e *Engine) Start(ctx context.Context) error {
 	}()
 
 	// Loop 3: Report scheduler loop (checks every 30s)
+	if err := e.RunSummaryTick(ctx); err != nil {
+		e.Logger.Error("summary tick failed", "error", err)
+	}
 	if err := e.RunReportTick(ctx); err != nil {
 		e.Logger.Error("startup report tick failed", "error", err)
 	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		summaryTicker := time.NewTicker(time.Duration(e.Config.SummaryIntervalHours) * time.Hour)
-		defer summaryTicker.Stop()
 
 		minuteTicker := time.NewTicker(30 * time.Second)
 		defer minuteTicker.Stop()
@@ -397,18 +397,6 @@ func (e *Engine) Start(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return
-			case <-summaryTicker.C:
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							e.Logger.Error("recovered panic in summary report loop",
-								"panic", r,
-								"stack", string(debug.Stack()),
-							)
-						}
-					}()
-					_ = e.SendPeriodicSummary(ctx, e.Config.SummaryIntervalHours)
-				}()
 
 			case <-minuteTicker.C:
 				func() {
@@ -421,6 +409,9 @@ func (e *Engine) Start(ctx context.Context) error {
 						}
 					}()
 
+					if err := e.RunSummaryTick(ctx); err != nil {
+						e.Logger.Error("summary tick failed", "error", err)
+					}
 					if err := e.RunReportTick(ctx); err != nil {
 						e.Logger.Error("daily report tick failed", "error", err)
 					}
@@ -486,4 +477,29 @@ func (e *Engine) RunReportTick(ctx context.Context) error {
 		return err
 	}
 	return e.Store.SetValue(ctx, "last_daily_date", day)
+}
+
+// RunSummaryTick sends a summary when the persisted interval has elapsed.
+func (e *Engine) RunSummaryTick(ctx context.Context) error {
+	e.reportMu.Lock()
+	defer e.reportMu.Unlock()
+	now := e.Now().UTC()
+	value, err := e.Store.GetValue(ctx, "last_summary_time")
+	if err != nil {
+		return err
+	}
+	if value == "" {
+		return e.Store.SetValue(ctx, "last_summary_time", now.Format(time.RFC3339Nano))
+	}
+	last, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return err
+	}
+	if now.Sub(last) < time.Duration(e.Config.SummaryIntervalHours)*time.Hour {
+		return nil
+	}
+	if err := e.SendPeriodicSummary(ctx, e.Config.SummaryIntervalHours); err != nil {
+		return err
+	}
+	return e.Store.SetValue(ctx, "last_summary_time", now.Format(time.RFC3339Nano))
 }

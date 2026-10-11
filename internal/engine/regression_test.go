@@ -201,3 +201,46 @@ func TestDailyReportCatchesUpAndSurvivesRestart(t *testing.T) {
 		t.Fatalf("daily retry attempts = %d", n.calls)
 	}
 }
+
+func TestSummaryIntervalSurvivesRestart(t *testing.T) {
+	path := t.TempDir() + "/db"
+	st, err := store.New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := &failingNotifier{}
+	cfg := &config.Config{SummaryIntervalHours: 6}
+	e := New(cfg, st, nil, nil, nil, notify.NewDispatcher([]notify.Notifier{n}, nil), nil)
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	e.Now = func() time.Time { return now }
+	if err := e.RunSummaryTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(5 * time.Hour)
+	st.Close()
+	st, err = store.New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	e.Store = st
+	if err := e.RunSummaryTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 0 {
+		t.Fatal("summary sent too early")
+	}
+	now = now.Add(time.Hour)
+	if err := e.RunSummaryTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 1 {
+		t.Fatalf("elapsed summary reports = %d, want 1", n.calls)
+	}
+	if err := e.RunSummaryTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 1 {
+		t.Fatal("duplicate summary")
+	}
+}
