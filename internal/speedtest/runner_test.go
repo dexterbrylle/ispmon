@@ -122,3 +122,19 @@ func TestOoklaRunner_BadJSONBecomesMeasurementError(t *testing.T) {
 		t.Errorf("expected parse failure error message, got %v", check.Error)
 	}
 }
+
+func TestOoklaRunnerStoresStderr(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "speedtest")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho 'No servers available' >&2\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r := speedtest.NewRunner(path)
+	r.FetchIP = nil
+	check, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Error == nil || !strings.Contains(*check.Error, "No servers available") {
+		t.Fatalf("stderr missing from stored error: %v", check.Error)
+	}
+}

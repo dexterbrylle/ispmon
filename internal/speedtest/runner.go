@@ -1,10 +1,12 @@
 package speedtest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/dexterbrylle/isp-speed-monitor/internal/store"
@@ -44,7 +46,13 @@ func NewRunner(binaryPath string) *OoklaRunner {
 		},
 		CmdRunner: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, name, args...)
-			return cmd.Output()
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			out, err := cmd.Output()
+			if err != nil && stderr.Len() > 0 {
+				err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+			}
+			return out, err
 		},
 		Now: func() time.Time {
 			return time.Now().UTC()
