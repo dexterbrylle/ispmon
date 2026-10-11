@@ -9,6 +9,7 @@ type migrationFunc func(tx *sql.Tx) error
 
 var migrations = []migrationFunc{
 	migrateV1,
+	migrateV2,
 }
 
 func migrateV1(tx *sql.Tx) error {
@@ -100,5 +101,19 @@ func ApplyMigrations(db *sql.DB) error {
 		}
 	}
 
+	return nil
+}
+
+func migrateV2(tx *sql.Tx) error {
+	for _, q := range []string{
+		"ALTER TABLE sla_breach_episodes ADD COLUMN notified_at TEXT",
+		"ALTER TABLE outage_episodes ADD COLUMN notified_at TEXT",
+		"CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+		"CREATE TABLE notification_outbox (id INTEGER PRIMARY KEY, episode_table TEXT NOT NULL, episode_id INTEGER NOT NULL, payload TEXT NOT NULL)",
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
 	return nil
 }

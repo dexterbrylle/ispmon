@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"strings"
@@ -47,18 +48,23 @@ func isTransient(err error) bool {
 
 // Dispatch sends the event to all configured notifiers concurrently.
 // A failing notifier will never block other notifiers or crash the process.
-func (d *Dispatcher) Dispatch(ctx context.Context, e Event) {
+func (d *Dispatcher) Dispatch(ctx context.Context, e Event) error {
 	if len(d.notifiers) == 0 {
-		return
+		return nil
 	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failures []error
 	for _, n := range d.notifiers {
 		wg.Add(1)
 		go func(target Notifier) {
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
+					mu.Lock()
+					failures = append(failures, fmt.Errorf("notifier panic: %v", r))
+					mu.Unlock()
 					d.logger.Error("notifier panic recovered", "notifier", target.Name(), "panic", r)
 				}
 			}()
@@ -79,6 +85,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, e Event) {
 			}
 
 			if err != nil {
+				mu.Lock()
+				failures = append(failures, err)
+				mu.Unlock()
 				d.logger.Error("failed to dispatch notification",
 					"notifier", target.Name(),
 					"kind", string(e.Kind),
@@ -89,4 +98,5 @@ func (d *Dispatcher) Dispatch(ctx context.Context, e Event) {
 	}
 
 	wg.Wait()
+	return errors.Join(failures...)
 }

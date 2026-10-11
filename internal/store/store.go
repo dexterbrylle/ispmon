@@ -265,7 +265,7 @@ func (s *Store) GetActiveSLABreach(ctx context.Context) (*SLABreachEpisode, erro
 }
 
 // StartSLABreach opens a new SLA breach episode. Fails if an open episode already exists.
-func (s *Store) StartSLABreach(ctx context.Context, ep *SLABreachEpisode) (int64, error) {
+func (s *Store) StartSLABreach(ctx context.Context, ep *SLABreachEpisode, events ...any) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed beginning transaction: %w", err)
@@ -300,6 +300,11 @@ func (s *Store) StartSLABreach(ctx context.Context, ep *SLABreachEpisode) (int64
 		return 0, fmt.Errorf("failed getting sla breach id: %w", err)
 	}
 
+	for _, event := range events {
+		if err := queueNotification(ctx, tx, "sla_breach_episodes", id, event); err != nil {
+			return 0, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed committing sla breach: %w", err)
 	}
@@ -345,12 +350,17 @@ func (s *Store) UpdateSLABreach(ctx context.Context, ep *SLABreachEpisode) error
 }
 
 // EndSLABreach closes an active SLA breach episode.
-func (s *Store) EndSLABreach(ctx context.Context, id int64, endedAt time.Time) error {
+func (s *Store) EndSLABreach(ctx context.Context, id int64, endedAt time.Time, events ...any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	query := `UPDATE sla_breach_episodes
 		SET ended_at = ?
 		WHERE id = ? AND ended_at IS NULL`
 
-	res, err := s.db.ExecContext(ctx, query, endedAt.UTC().Format(time.RFC3339), id)
+	res, err := tx.ExecContext(ctx, query, endedAt.UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("failed closing sla breach episode: %w", err)
 	}
@@ -362,7 +372,12 @@ func (s *Store) EndSLABreach(ctx context.Context, id int64, endedAt time.Time) e
 	if rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	for _, event := range events {
+		if err := queueNotification(ctx, tx, "sla_breach_episodes", id, event); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetSLABreachEpisodesBetween returns SLA breach episodes overlapping or starting in [start, end].
@@ -500,12 +515,17 @@ func (s *Store) StartOutage(ctx context.Context, ep *OutageEpisode) (int64, erro
 }
 
 // EndOutage closes an active outage episode and records duration.
-func (s *Store) EndOutage(ctx context.Context, id int64, endedAt time.Time, durationSeconds int) error {
+func (s *Store) EndOutage(ctx context.Context, id int64, endedAt time.Time, durationSeconds int, events ...any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	query := `UPDATE outage_episodes
 		SET ended_at = ?, duration_seconds = ?
 		WHERE id = ? AND ended_at IS NULL`
 
-	res, err := s.db.ExecContext(ctx, query,
+	res, err := tx.ExecContext(ctx, query,
 		endedAt.UTC().Format(time.RFC3339),
 		durationSeconds,
 		id,
@@ -521,7 +541,12 @@ func (s *Store) EndOutage(ctx context.Context, id int64, endedAt time.Time, dura
 	if rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	for _, event := range events {
+		if err := queueNotification(ctx, tx, "outage_episodes", id, event); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // GetOutageEpisodesBetween returns outage episodes in the given time window.

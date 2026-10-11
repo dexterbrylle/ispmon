@@ -46,7 +46,7 @@ func TestStore_Migrations_V0_to_V1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed getting migrated version: %v", err)
 	}
-	if v1 != 1 {
+	if v1 != 2 {
 		t.Fatalf("expected version 1 after migration, got %d", v1)
 	}
 
@@ -55,7 +55,7 @@ func TestStore_Migrations_V0_to_V1(t *testing.T) {
 		t.Fatalf("subsequent migration run failed: %v", err)
 	}
 	v1After, _ := store.GetUserVersion(db)
-	if v1After != 1 {
+	if v1After != 2 {
 		t.Fatalf("expected version to remain 1, got %d", v1After)
 	}
 }

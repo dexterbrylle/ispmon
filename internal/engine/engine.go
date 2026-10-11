@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -31,6 +32,8 @@ type Engine struct {
 	Logger        *slog.Logger
 	Now           func() time.Time
 
+	notifyMu     sync.Mutex
+	notifyWG     sync.WaitGroup
 	checkMu      sync.Mutex
 	isChecking   bool
 	lastDailyDay int // day of year daily report was last dispatched
@@ -82,6 +85,7 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 		e.checkMu.Unlock()
 	}()
 
+	defer func() { e.notifyMu.Lock(); defer e.notifyMu.Unlock(); e.deliverPending(ctx) }()
 	now := e.Now().UTC()
 	e.Logger.Info("starting scheduled speed test check")
 
@@ -164,14 +168,6 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 	action := sla.DecideAction(activeBreach, eval, now)
 	switch action.Kind {
 	case sla.ActionOpenBreach:
-		id, err := e.Store.StartSLABreach(ctx, action.Episode)
-		if err != nil {
-			e.Logger.Error("failed starting SLA breach episode in store", "error", err)
-			return nil
-		}
-		action.Episode.ID = id
-		e.Logger.Warn("SLA breach declared, alerting notifiers", "episode_id", id, "violation_pct", eval.ViolationPct)
-
 		csvData, _ := report.BuildCSV(eval.BreachedChecks)
 		event := notify.BuildSLABreachEvent(
 			e.Config.ISPPlanName,
@@ -181,7 +177,13 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 			e.Config.SLAWindowHours,
 			csvData,
 		)
-		e.Dispatcher.Dispatch(ctx, event)
+		id, err := e.Store.StartSLABreach(ctx, action.Episode, event)
+		if err != nil {
+			e.Logger.Error("failed starting SLA breach episode in store", "error", err)
+			return nil
+		}
+		action.Episode.ID = id
+		e.Logger.Warn("SLA breach declared, alerting notifiers", "episode_id", id, "violation_pct", eval.ViolationPct)
 
 	case sla.ActionUpdateBreach:
 		if err := e.Store.UpdateSLABreach(ctx, action.Episode); err != nil {
@@ -190,14 +192,19 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 			e.Logger.Debug("SLA breach episode updated silently", "episode_id", action.Episode.ID)
 		}
 
+		csvData, _ := report.BuildCSV(eval.BreachedChecks)
+		event := notify.BuildSLABreachEvent(e.Config.ISPPlanName, &eval, e.Config.ISPPlanThreshold, e.Config.ISPPlanUploadThreshold, e.Config.SLAWindowHours, csvData)
+		if err := e.Store.QueueUnsentSLABreach(ctx, action.Episode.ID, event); err != nil {
+			return err
+		}
+
 	case sla.ActionResolveBreach:
-		if err := e.Store.EndSLABreach(ctx, action.EpisodeIDToEnd, now); err != nil {
+		event := notify.BuildSLAResolvedEvent(e.Config.ISPPlanName, action.Episode, now)
+		if err := e.Store.EndSLABreach(ctx, action.EpisodeIDToEnd, now, event); err != nil {
 			e.Logger.Error("failed closing SLA breach episode in store", "error", err)
 			return nil
 		}
 		e.Logger.Info("SLA breach resolved, sending recovery alert", "episode_id", action.EpisodeIDToEnd)
-		event := notify.BuildSLAResolvedEvent(e.Config.ISPPlanName, action.Episode, now)
-		e.Dispatcher.Dispatch(ctx, event)
 	}
 
 	return nil
@@ -234,9 +241,14 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 		}
 
 		event := notify.BuildOutageRestoredEvent(e.Config.ISPPlanName, action.DurationSeconds)
-		go e.Dispatcher.Dispatch(ctx, event)
+		if err := e.Store.QueueNotification(ctx, "outage_episodes", action.EpisodeID, event); err != nil {
+			return err
+		}
 	}
 
+	if res.OK {
+		e.retryNotifications(ctx)
+	}
 	return nil
 }
 
@@ -423,6 +435,35 @@ func (e *Engine) Start(ctx context.Context) error {
 	<-ctx.Done()
 	e.Logger.Info("daemon context canceled, waiting for loops to terminate")
 	wg.Wait()
+	e.notifyWG.Wait()
 	e.Logger.Info("all daemon loops exited cleanly")
 	return nil
+}
+
+func (e *Engine) retryNotifications(ctx context.Context) {
+	if !e.notifyMu.TryLock() {
+		return
+	}
+	e.notifyWG.Add(1)
+	go func() { defer e.notifyWG.Done(); defer e.notifyMu.Unlock(); e.deliverPending(ctx) }()
+}
+func (e *Engine) deliverPending(ctx context.Context) {
+	pending, err := e.Store.PendingNotifications(ctx)
+	if err != nil {
+		e.Logger.Error("reading pending alerts", "error", err)
+		return
+	}
+	for _, p := range pending {
+		var event notify.Event
+		if err := json.Unmarshal(p.Payload, &event); err != nil {
+			e.Logger.Error("decoding pending alert", "error", err)
+			continue
+		}
+		if err := e.Dispatcher.Dispatch(ctx, event); err != nil {
+			continue
+		}
+		if err := e.Store.CompleteNotification(ctx, p, e.Now()); err != nil {
+			e.Logger.Error("marking alert delivered", "error", err)
+		}
+	}
 }
