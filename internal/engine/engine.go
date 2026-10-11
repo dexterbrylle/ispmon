@@ -32,11 +32,11 @@ type Engine struct {
 	Logger        *slog.Logger
 	Now           func() time.Time
 
-	notifyMu     sync.Mutex
-	notifyWG     sync.WaitGroup
-	checkMu      sync.Mutex
-	isChecking   bool
-	lastDailyDay int // day of year daily report was last dispatched
+	notifyMu   sync.Mutex
+	notifyWG   sync.WaitGroup
+	checkMu    sync.Mutex
+	isChecking bool
+	reportMu   sync.Mutex
 }
 
 // New creates an Engine instance.
@@ -64,7 +64,6 @@ func New(
 		Now: func() time.Time {
 			return time.Now().UTC()
 		},
-		lastDailyDay: -1,
 	}
 }
 
@@ -311,8 +310,7 @@ func (e *Engine) SendDailyReport(ctx context.Context) error {
 
 	e.Logger.Info("dispatching daily report with attachments")
 	event := notify.BuildDailyReportEvent(summary, csvBytes, pdfBytes)
-	e.Dispatcher.Dispatch(ctx, event)
-	return nil
+	return e.Dispatcher.Dispatch(ctx, event)
 }
 
 // Start launches the daemon loops (speed check, probe, reports) under ctx until cancelled.
@@ -383,6 +381,9 @@ func (e *Engine) Start(ctx context.Context) error {
 	}()
 
 	// Loop 3: Report scheduler loop (checks every 30s)
+	if err := e.RunReportTick(ctx); err != nil {
+		e.Logger.Error("startup report tick failed", "error", err)
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -420,13 +421,8 @@ func (e *Engine) Start(ctx context.Context) error {
 						}
 					}()
 
-					nowInTZ := e.Now().In(e.Config.Location)
-					if nowInTZ.Hour() == e.Config.DailyReportHour && nowInTZ.Minute() == e.Config.DailyReportMinute {
-						currentDay := nowInTZ.YearDay()
-						if e.lastDailyDay != currentDay {
-							e.lastDailyDay = currentDay
-							_ = e.SendDailyReport(ctx)
-						}
+					if err := e.RunReportTick(ctx); err != nil {
+						e.Logger.Error("daily report tick failed", "error", err)
 					}
 				}()
 			}
@@ -467,4 +463,27 @@ func (e *Engine) deliverPending(ctx context.Context) {
 			e.Logger.Error("marking alert delivered", "error", err)
 		}
 	}
+}
+
+// RunReportTick sends today's report once its configured local time has passed.
+func (e *Engine) RunReportTick(ctx context.Context) error {
+	e.reportMu.Lock()
+	defer e.reportMu.Unlock()
+	now := e.Now().In(e.Config.Location)
+	target := time.Date(now.Year(), now.Month(), now.Day(), e.Config.DailyReportHour, e.Config.DailyReportMinute, 0, 0, e.Config.Location)
+	if now.Before(target) {
+		return nil
+	}
+	day := now.Format("2006-01-02")
+	last, err := e.Store.GetValue(ctx, "last_daily_date")
+	if err != nil {
+		return err
+	}
+	if last == day {
+		return nil
+	}
+	if err := e.SendDailyReport(ctx); err != nil {
+		return err
+	}
+	return e.Store.SetValue(ctx, "last_daily_date", day)
 }

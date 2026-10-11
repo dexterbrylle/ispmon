@@ -157,3 +157,47 @@ func TestSLABreachRetriesOnLaterCheck(t *testing.T) {
 		t.Fatalf("breach delivery attempts = %d, want 2", n.calls)
 	}
 }
+
+func TestDailyReportCatchesUpAndSurvivesRestart(t *testing.T) {
+	path := t.TempDir() + "/db"
+	st, err := store.New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := &failingNotifier{}
+	cfg := &config.Config{Location: time.UTC, DailyReportHour: 10, SummaryIntervalHours: 6}
+	e := New(cfg, st, nil, nil, nil, notify.NewDispatcher([]notify.Notifier{n}, nil), nil)
+	now := time.Date(2026, 10, 11, 10, 5, 0, 0, time.UTC)
+	e.Now = func() time.Time { return now }
+	if err := e.RunReportTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 1 {
+		t.Fatalf("missed target: reports = %d, want 1", n.calls)
+	}
+	st.Close()
+	st, err = store.New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	e.Store = st
+	if err := e.RunReportTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 1 {
+		t.Fatalf("duplicate after restart: %d", n.calls)
+	}
+	now = now.Add(24 * time.Hour)
+	n.fail = true
+	if err := e.RunReportTick(context.Background()); err == nil {
+		t.Fatal("failed report treated as sent")
+	}
+	n.fail = false
+	if err := e.RunReportTick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n.calls != 3 {
+		t.Fatalf("daily retry attempts = %d", n.calls)
+	}
+}
