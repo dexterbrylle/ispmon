@@ -15,6 +15,7 @@ func BuildSLABreachEvent(
 	eval *sla.EvaluationResult,
 	thresholdDown, thresholdUp float64,
 	windowHours int,
+	violationPct float64,
 	csvData []byte,
 ) Event {
 	worstDownStr := "N/A"
@@ -66,7 +67,7 @@ func BuildSLABreachEvent(
 	return Event{
 		Kind:        EventSLABreach,
 		Title:       fmt.Sprintf("⚠️ ISP SLA Breach Declared — %s", planName),
-		Body:        fmt.Sprintf("Connection quality dropped below contractual thresholds for >%.1f%% of checks in the last %d-hour rolling window.", 20.0, windowHours),
+		Body:        fmt.Sprintf("Connection quality dropped below contractual thresholds for >%.1f%% of checks in the last %d-hour rolling window.", violationPct, windowHours),
 		Fields:      fields,
 		Attachments: attachments,
 	}

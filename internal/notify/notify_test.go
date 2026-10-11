@@ -55,7 +55,7 @@ func TestDiscordNotifier_ColorsAndPayload(t *testing.T) {
 			},
 		},
 	}
-	breachEvent := notify.BuildSLABreachEvent("Test Plan", breachEval, 150.0, 150.0, 24, []byte("csv-data"))
+	breachEvent := notify.BuildSLABreachEvent("Test Plan", breachEval, 150.0, 150.0, 24, 20, []byte("csv-data"))
 
 	err := d.Notify(context.Background(), breachEvent)
 	if err != nil {

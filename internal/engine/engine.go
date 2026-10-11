@@ -175,6 +175,7 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 			e.Config.ISPPlanThreshold,
 			e.Config.ISPPlanUploadThreshold,
 			e.Config.SLAWindowHours,
+			e.Config.SLAViolationPct,
 			csvData,
 		)
 		id, err := e.Store.StartSLABreach(ctx, action.Episode, event)
@@ -193,7 +194,7 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 		}
 
 		csvData, _ := report.BuildCSV(eval.BreachedChecks)
-		event := notify.BuildSLABreachEvent(e.Config.ISPPlanName, &eval, e.Config.ISPPlanThreshold, e.Config.ISPPlanUploadThreshold, e.Config.SLAWindowHours, csvData)
+		event := notify.BuildSLABreachEvent(e.Config.ISPPlanName, &eval, e.Config.ISPPlanThreshold, e.Config.ISPPlanUploadThreshold, e.Config.SLAWindowHours, e.Config.SLAViolationPct, csvData)
 		if err := e.Store.QueueUnsentSLABreach(ctx, action.Episode.ID, event); err != nil {
 			return err
 		}
