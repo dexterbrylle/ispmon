@@ -129,7 +129,7 @@ func TestSMTPNotifier_BuildMIME(t *testing.T) {
 	var sentTo []string
 	var sentMsg []byte
 
-	mockSender := func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	mockSender := func(ctx context.Context, addr string, a smtp.Auth, from string, to []string, msg []byte) error {
 		sentAddr = addr
 		sentFrom = from
 		sentTo = to
