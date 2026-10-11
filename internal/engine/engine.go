@@ -207,7 +207,30 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 		e.Logger.Info("SLA breach resolved, sending recovery alert", "episode_id", action.EpisodeIDToEnd)
 	}
 
+	_ = e.RunRetentionPrune(ctx)
 	return nil
+}
+
+// RunRetentionPrune runs data retention pruning once per day if RetentionDays > 0.
+func (e *Engine) RunRetentionPrune(ctx context.Context) error {
+	if e.Config.RetentionDays <= 0 {
+		return nil
+	}
+	now := e.Now().UTC()
+	day := now.Format("2006-01-02")
+	last, err := e.Store.GetValue(ctx, "last_retention_date")
+	if err != nil {
+		return err
+	}
+	if last == day {
+		return nil
+	}
+	e.Logger.Info("pruning database records older than retention window", "retention_days", e.Config.RetentionDays)
+	if _, err := e.Store.PruneOldData(ctx, e.Config.RetentionDays, now); err != nil {
+		e.Logger.Error("failed pruning old data", "error", err)
+		return err
+	}
+	return e.Store.SetValue(ctx, "last_retention_date", day)
 }
 
 // RunProbeRound executes one TCP connectivity probe across configured targets.

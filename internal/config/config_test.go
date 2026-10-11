@@ -60,6 +60,9 @@ func TestConfig_ValidDefaults(t *testing.T) {
 	if cfg.DBPath != "data/ispmon.db" {
 		t.Errorf("expected default DBPath 'data/ispmon.db', got %q", cfg.DBPath)
 	}
+	if cfg.RetentionDays != 90 {
+		t.Errorf("expected default RetentionDays 90, got %d", cfg.RetentionDays)
+	}
 	if len(cfg.ProbeTargets) != 2 || cfg.ProbeTargets[0] != "1.1.1.1:443" {
 		t.Errorf("expected default probe targets, got %v", cfg.ProbeTargets)
 	}
@@ -156,6 +159,20 @@ func TestConfig_ValidationFailures(t *testing.T) {
 			},
 			errContains: "invalid PROBE_TARGETS entry",
 		},
+		{
+			name: "negative RETENTION_DAYS",
+			mutator: func(m map[string]string) {
+				m["RETENTION_DAYS"] = "-5"
+			},
+			errContains: "RETENTION_DAYS must be non-negative",
+		},
+		{
+			name: "non-integer RETENTION_DAYS",
+			mutator: func(m map[string]string) {
+				m["RETENTION_DAYS"] = "forever"
+			},
+			errContains: "RETENTION_DAYS must be an integer",
+		},
 	}
 
 	for _, tt := range tests {
@@ -237,5 +254,26 @@ func TestPartialSMTPWarnsWithoutSecrets(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "do-not-log-this") {
 		t.Fatal("password logged")
+	}
+}
+
+func TestConfig_RetentionDaysExplicit(t *testing.T) {
+	env := validEnvMap()
+	env["RETENTION_DAYS"] = "0"
+	cfg, err := config.LoadFromLookup(mockLookup(env))
+	if err != nil {
+		t.Fatalf("unexpected error with RETENTION_DAYS=0: %v", err)
+	}
+	if cfg.RetentionDays != 0 {
+		t.Errorf("expected RetentionDays 0, got %d", cfg.RetentionDays)
+	}
+
+	env["RETENTION_DAYS"] = "30"
+	cfg, err = config.LoadFromLookup(mockLookup(env))
+	if err != nil {
+		t.Fatalf("unexpected error with RETENTION_DAYS=30: %v", err)
+	}
+	if cfg.RetentionDays != 30 {
+		t.Errorf("expected RetentionDays 30, got %d", cfg.RetentionDays)
 	}
 }

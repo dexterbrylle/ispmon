@@ -37,6 +37,7 @@ type Config struct {
 	Location             *time.Location
 
 	DBPath               string
+	RetentionDays        int
 	ProbeTargets         []string
 	ProbeIntervalSeconds int
 	ProbeFailRounds      int
@@ -239,6 +240,11 @@ func LoadFromLookup(lookup func(string) (string, bool)) (*Config, error) {
 		dbPath = "data/ispmon.db"
 	}
 	cfg.DBPath = dbPath
+
+	cfg.RetentionDays = getOptionalInt("RETENTION_DAYS", 90)
+	if cfg.RetentionDays < 0 {
+		errs = append(errs, fmt.Errorf("RETENTION_DAYS must be non-negative (0 to keep forever), got %d", cfg.RetentionDays))
+	}
 
 	probeTargetsRaw, ok := getVal("PROBE_TARGETS")
 	if !ok || probeTargetsRaw == "" {

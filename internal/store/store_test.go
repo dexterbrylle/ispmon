@@ -324,3 +324,155 @@ func TestStore_EpisodesBetween(t *testing.T) {
 		t.Errorf("expected out2 to be still open, got %v", eps[1].EndedAt)
 	}
 }
+
+func TestStore_PruneOldData(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+
+	// 1. RetentionDays <= 0 does nothing
+	n, err := s.PruneOldData(ctx, 0, now)
+	if err != nil {
+		t.Fatalf("unexpected error with retention 0: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 deleted for retention 0, got %d", n)
+	}
+
+	// 2. Insert checks: one 100 days old, one 10 days old
+	oldCheck := &store.NetworkCheck{
+		Timestamp: now.AddDate(0, 0, -100),
+		Status:    "ok",
+		Engine:    "ookla-cli",
+	}
+	freshCheck := &store.NetworkCheck{
+		Timestamp: now.AddDate(0, 0, -10),
+		Status:    "ok",
+		Engine:    "ookla-cli",
+	}
+	if _, err := s.SaveCheck(ctx, oldCheck); err != nil {
+		t.Fatalf("failed saving old check: %v", err)
+	}
+	if _, err := s.SaveCheck(ctx, freshCheck); err != nil {
+		t.Fatalf("failed saving fresh check: %v", err)
+	}
+
+	// 3. Insert SLA episodes:
+	// - old closed breach (ended 95 days ago)
+	oldBreach := &store.SLABreachEpisode{
+		StartedAt:           now.AddDate(0, 0, -100),
+		ViolatingCheckCount: 5,
+		TotalCheckCount:     10,
+		ViolationPct:        50.0,
+	}
+	oldBreachID, err := s.StartSLABreach(ctx, oldBreach)
+	if err != nil {
+		t.Fatalf("failed starting old breach: %v", err)
+	}
+	if err := s.EndSLABreach(ctx, oldBreachID, now.AddDate(0, 0, -95)); err != nil {
+		t.Fatalf("failed ending old breach: %v", err)
+	}
+
+	// - fresh closed breach (ended 5 days ago)
+	freshBreach := &store.SLABreachEpisode{
+		StartedAt:           now.AddDate(0, 0, -10),
+		ViolatingCheckCount: 3,
+		TotalCheckCount:     10,
+		ViolationPct:        30.0,
+	}
+	freshBreachID, err := s.StartSLABreach(ctx, freshBreach)
+	if err != nil {
+		t.Fatalf("failed starting fresh breach: %v", err)
+	}
+	if err := s.EndSLABreach(ctx, freshBreachID, now.AddDate(0, 0, -5)); err != nil {
+		t.Fatalf("failed ending fresh breach: %v", err)
+	}
+
+	// 4. Insert Outages:
+	// - old closed outage (ended 95 days ago)
+	oldOutage := &store.OutageEpisode{
+		StartedAt: now.AddDate(0, 0, -100),
+		Reason:    "old drop",
+	}
+	oldOutageID, err := s.StartOutage(ctx, oldOutage)
+	if err != nil {
+		t.Fatalf("failed starting old outage: %v", err)
+	}
+	if err := s.EndOutage(ctx, oldOutageID, now.AddDate(0, 0, -95), 300); err != nil {
+		t.Fatalf("failed ending old outage: %v", err)
+	}
+
+	// - fresh closed outage (ended 5 days ago)
+	freshOutage := &store.OutageEpisode{
+		StartedAt: now.AddDate(0, 0, -10),
+		Reason:    "fresh drop",
+	}
+	freshOutageID, err := s.StartOutage(ctx, freshOutage)
+	if err != nil {
+		t.Fatalf("failed starting fresh outage: %v", err)
+	}
+	if err := s.EndOutage(ctx, freshOutageID, now.AddDate(0, 0, -5), 120); err != nil {
+		t.Fatalf("failed ending fresh outage: %v", err)
+	}
+
+	// - open outage started 120 days ago (must NOT be pruned!)
+	openOutage := &store.OutageEpisode{
+		StartedAt: now.AddDate(0, 0, -120),
+		Reason:    "long-running open outage",
+	}
+	if _, err := s.StartOutage(ctx, openOutage); err != nil {
+		t.Fatalf("failed starting open outage: %v", err)
+	}
+
+	// Run retention prune: 90 days
+	deleted, err := s.PruneOldData(ctx, 90, now)
+	if err != nil {
+		t.Fatalf("failed running PruneOldData: %v", err)
+	}
+	if deleted != 3 { // 1 old check + 1 old SLA breach + 1 old outage
+		t.Errorf("expected 3 deleted rows, got %d", deleted)
+	}
+
+	// Verify remaining checks
+	checks, err := s.GetRecentChecks(ctx, now.AddDate(0, 0, -200))
+	if err != nil {
+		t.Fatalf("failed getting checks: %v", err)
+	}
+	if len(checks) != 1 {
+		t.Fatalf("expected 1 remaining check, got %d", len(checks))
+	}
+	if checks[0].ID != freshCheck.ID {
+		t.Errorf("expected fresh check to survive, got check ID %d", checks[0].ID)
+	}
+
+	// Verify remaining SLA breaches
+	breaches, err := s.GetSLABreachEpisodesBetween(ctx, now.AddDate(0, 0, -200), now)
+	if err != nil {
+		t.Fatalf("failed getting breaches: %v", err)
+	}
+	if len(breaches) != 1 {
+		t.Fatalf("expected 1 remaining breach, got %d", len(breaches))
+	}
+	if breaches[0].ID != freshBreachID {
+		t.Errorf("expected fresh breach to survive, got breach ID %d", breaches[0].ID)
+	}
+
+	// Verify remaining outages (fresh closed outage + open outage)
+	outages, err := s.GetOutageEpisodesBetween(ctx, now.AddDate(0, 0, -200), now)
+	if err != nil {
+		t.Fatalf("failed getting outages: %v", err)
+	}
+	if len(outages) != 2 {
+		t.Fatalf("expected 2 remaining outages (1 fresh closed + 1 open), got %d", len(outages))
+	}
+
+	// Active open outage still exists
+	activeOutage, err := s.GetActiveOutage(ctx)
+	if err != nil {
+		t.Fatalf("failed querying active outage: %v", err)
+	}
+	if activeOutage == nil {
+		t.Fatal("expected active open outage to be preserved")
+	}
+}
+

@@ -282,3 +282,56 @@ func TestOutageRecordedOnRestoreAfterStartFails(t *testing.T) {
 		t.Fatalf("missing restore duration: %+v", episodes[0])
 	}
 }
+
+func TestEngine_RunRetentionPrune(t *testing.T) {
+	st, err := store.New(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	cfg := &config.Config{RetentionDays: 90}
+	e := New(cfg, st, nil, nil, nil, notify.NewDispatcher(nil, nil), nil)
+	e.Now = func() time.Time { return now }
+
+	ctx := context.Background()
+
+	// Insert an old check (100 days old)
+	oldCheck := &store.NetworkCheck{
+		Timestamp: now.AddDate(0, 0, -100),
+		Status:    "ok",
+		Engine:    "ookla-cli",
+	}
+	if _, err := st.SaveCheck(ctx, oldCheck); err != nil {
+		t.Fatal(err)
+	}
+
+	// First prune run today
+	if err := e.RunRetentionPrune(ctx); err != nil {
+		t.Fatalf("unexpected error in RunRetentionPrune: %v", err)
+	}
+
+	// Check should be pruned
+	checks, err := st.GetRecentChecks(ctx, now.AddDate(0, 0, -200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 0 {
+		t.Fatalf("expected 0 checks after prune, got %d", len(checks))
+	}
+
+	// Verify kv marker was set
+	val, err := st.GetValue(ctx, "last_retention_date")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val != "2026-10-11" {
+		t.Fatalf("expected last_retention_date '2026-10-11', got %q", val)
+	}
+
+	// Running again on the same day is a no-op
+	if err := e.RunRetentionPrune(ctx); err != nil {
+		t.Fatalf("unexpected error in second RunRetentionPrune: %v", err)
+	}
+}

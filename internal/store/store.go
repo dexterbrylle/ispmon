@@ -51,6 +51,9 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed setting foreign_keys: %w", err)
 	}
 
+	// Enable incremental auto-vacuum for newly created databases
+	_, _ = db.Exec("PRAGMA auto_vacuum = INCREMENTAL;")
+
 	if err := ApplyMigrations(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed applying migrations: %w", err)
@@ -599,3 +602,80 @@ func (s *Store) GetOutageEpisodesBetween(ctx context.Context, start, end time.Ti
 	}
 	return eps, rows.Err()
 }
+
+// PruneOldData deletes network_checks and closed episodes (SLA breaches and outages) older than retentionDays.
+// If retentionDays <= 0, no pruning is performed.
+// Open episodes (where ended_at IS NULL) are never deleted.
+// After deleting, Vacuum is invoked to reclaim storage space.
+func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Time) (int64, error) {
+	if retentionDays <= 0 {
+		return 0, nil
+	}
+
+	cutoff := now.UTC().AddDate(0, 0, -retentionDays)
+	cutoffStr := cutoff.Format(time.RFC3339)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed beginning prune transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var totalDeleted int64
+
+	// 1. Delete old network checks
+	res, err := tx.ExecContext(ctx, "DELETE FROM network_checks WHERE timestamp < ?", cutoffStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed pruning network_checks: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil {
+		totalDeleted += n
+	}
+
+	// 2. Delete old closed SLA breach episodes
+	res, err = tx.ExecContext(ctx, "DELETE FROM sla_breach_episodes WHERE ended_at IS NOT NULL AND ended_at < ?", cutoffStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed pruning sla_breach_episodes: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil {
+		totalDeleted += n
+	}
+
+	// 3. Delete old closed outage episodes
+	res, err = tx.ExecContext(ctx, "DELETE FROM outage_episodes WHERE ended_at IS NOT NULL AND ended_at < ?", cutoffStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed pruning outage_episodes: %w", err)
+	}
+	if n, err := res.RowsAffected(); err == nil {
+		totalDeleted += n
+	}
+
+	// 4. Clean up any notification_outbox references for deleted episodes
+	_, _ = tx.ExecContext(ctx, "DELETE FROM notification_outbox WHERE episode_table = 'sla_breach_episodes' AND episode_id NOT IN (SELECT id FROM sla_breach_episodes)")
+	_, _ = tx.ExecContext(ctx, "DELETE FROM notification_outbox WHERE episode_table = 'outage_episodes' AND episode_id NOT IN (SELECT id FROM outage_episodes)")
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed committing prune transaction: %w", err)
+	}
+
+	// Reclaim storage sensibly outside transaction
+	if err := s.Vacuum(ctx); err != nil {
+		return totalDeleted, fmt.Errorf("failed vacuuming database after prune: %w", err)
+	}
+
+	return totalDeleted, nil
+}
+
+// Vacuum reclaims freed database pages using incremental_vacuum if auto_vacuum is INCREMENTAL,
+// or VACUUM otherwise.
+func (s *Store) Vacuum(ctx context.Context) error {
+	var autoVacuum int
+	_ = s.db.QueryRowContext(ctx, "PRAGMA auto_vacuum;").Scan(&autoVacuum)
+	if autoVacuum == 2 {
+		_, err := s.db.ExecContext(ctx, "PRAGMA incremental_vacuum;")
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, "VACUUM;")
+	return err
+}
+
