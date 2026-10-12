@@ -6,24 +6,19 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# EDIT PLACEHOLDER: User and group to run as
 User=ispmon
 Group=ispmon
 
-# EDIT PLACEHOLDER: Working directory where ispmon stores data (ensure user has write permissions)
 WorkingDirectory=/var/lib/ispmon
 
-# EDIT PLACEHOLDER: Path to configuration file containing environment variables
 EnvironmentFile=/etc/ispmon/ispmon.env
 
-# EDIT PLACEHOLDER: Path to ispmon binary
 ExecStart=/usr/local/bin/ispmon run
 
 Restart=always
 RestartSec=10s
 TimeoutStopSec=15s
 
-# Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

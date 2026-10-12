@@ -37,7 +37,6 @@ func TestDiscordNotifier_ColorsAndPayload(t *testing.T) {
 
 	d := notify.NewDiscordNotifier(ts.URL, ts.Client())
 
-	// 1. SLA Breach (Must be Red)
 	worstDown := 95.0
 	worstUp := 90.0
 	url := "https://www.speedtest.net/result/c/123"
@@ -86,7 +85,6 @@ func TestDiscordNotifier_ColorsAndPayload(t *testing.T) {
 	}
 	mu.Unlock()
 
-	// 2. SLA Resolved (Must be Green)
 	ep := &store.SLABreachEpisode{
 		ID:           42,
 		StartedAt:    time.Now().Add(-2 * time.Hour),
@@ -197,13 +195,9 @@ func (f *fakeNotifier) Notify(ctx context.Context, e notify.Event) error {
 }
 
 func TestDispatcher_IsolationAndRetry(t *testing.T) {
-	// Notifier 1: always succeeds
 	n1 := &fakeNotifier{name: "good"}
-	// Notifier 2: fails with permanent error (no retry)
 	n2 := &fakeNotifier{name: "failing", failCount: 10, isNetErr: false}
-	// Notifier 3: fails once with transient net error, succeeds on immediate retry
 	n3 := &fakeNotifier{name: "transient", failCount: 1, isNetErr: true}
-	// Notifier 4: panics! Dispatcher must recover and continue.
 	n4 := &fakeNotifier{name: "panicking", panics: true}
 
 	disp := notify.NewDispatcher([]notify.Notifier{n1, n2, n3, n4}, nil)
@@ -213,7 +207,6 @@ func TestDispatcher_IsolationAndRetry(t *testing.T) {
 		Title: "Outage Test",
 	}
 
-	// Dispatch must not block, panic, or fail
 	disp.Dispatch(context.Background(), event)
 
 	if atomic.LoadInt32(&n1.callCount) != 1 {

@@ -112,13 +112,11 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 		)
 	}
 
-	// Persist check result
 	_, saveErr := e.Store.SaveCheck(ctx, check)
 	if saveErr != nil {
 		e.Logger.Error("failed saving check to store", "error", saveErr)
 	}
 
-	// Touch heartbeat on check completion (success or measurement_error)
 	if hbErr := health.WriteHeartbeat(e.HeartbeatPath); hbErr != nil {
 		e.Logger.Warn("failed writing heartbeat", "path", e.HeartbeatPath, "error", hbErr)
 	}
@@ -134,7 +132,6 @@ func (e *Engine) RunCheck(ctx context.Context) error {
 		"below_threshold", check.BelowThreshold,
 	)
 
-	// Evaluate SLA across rolling window
 	windowCutoff := now.Add(-time.Duration(e.Config.SLAWindowHours) * time.Hour)
 	checks, err := e.Store.GetRecentChecks(ctx, windowCutoff)
 	if err != nil {
@@ -283,7 +280,6 @@ func (e *Engine) RunProbeRound(ctx context.Context) error {
 		e.retryNotifications(ctx)
 	}
 
-	// Touch probe heartbeat on probe round completion
 	if hbErr := health.WriteHeartbeat(e.ProbeHeartbeatPath); hbErr != nil {
 		e.Logger.Warn("failed writing probe heartbeat", "path", e.ProbeHeartbeatPath, "error", hbErr)
 	}
@@ -364,7 +360,6 @@ func (e *Engine) SendDailyReport(ctx context.Context) error {
 
 // Start launches the daemon loops (speed check, probe, reports) under ctx until cancelled.
 func (e *Engine) Start(ctx context.Context) error {
-	// Touch heartbeat at startup
 	if err := health.WriteHeartbeat(e.HeartbeatPath); err != nil {
 		e.Logger.Warn("failed writing startup heartbeat", "error", err)
 	}
@@ -372,13 +367,11 @@ func (e *Engine) Start(ctx context.Context) error {
 		e.Logger.Warn("failed writing startup probe heartbeat", "error", err)
 	}
 
-	// Run initial check immediately
 	e.Logger.Info("running initial speed check on startup")
 	_ = e.RunCheck(ctx)
 
 	var wg sync.WaitGroup
 
-	// Loop 1: Speed test loop
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -405,7 +398,6 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Loop 2: TCP probe loop
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -432,7 +424,6 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Loop 3: Report scheduler loop (checks every 30s)
 	if err := e.RunSummaryTick(ctx); err != nil {
 		e.Logger.Error("summary tick failed", "error", err)
 	}

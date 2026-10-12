@@ -74,7 +74,6 @@ func (d *Dispatcher) Dispatch(ctx context.Context, e Event) error {
 			cancel()
 
 			if err != nil && isTransient(err) && ctx.Err() == nil {
-				// One immediate retry for transient network errors
 				d.logger.Warn("transient failure sending notification, retrying once",
 					"notifier", target.Name(),
 					"error", err,

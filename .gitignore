@@ -1,10 +1,8 @@
-# Environment variables
 .env
 
 bin/
 /ispmon
 
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -28,11 +26,9 @@ wheels/
 .installed.cfg
 *.egg
 
-# Logs
 logs/
 *.log
 
-# Database
 data/
 *.db
 *.db-wal
@@ -40,14 +36,11 @@ data/
 *.sqlite3
 .*heartbeat*
 
-# Reports
 *.pdf
 *.csv
 
-# Testing
 .pytest_cache/
 
-# IDE
 .idea/
 .vscode/
 *.swp

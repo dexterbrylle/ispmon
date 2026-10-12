@@ -25,7 +25,6 @@ func TestRun_Version(t *testing.T) {
 			t.Errorf("expected empty stderr, got: %s", stderr.String())
 		}
 
-		// Also verify run() directly
 		if directCode := run([]string{arg}); directCode != 0 {
 			t.Errorf("run(%q) = %d, want 0", arg, directCode)
 		}
@@ -46,7 +45,6 @@ func TestRun_UnknownCommand(t *testing.T) {
 			t.Errorf("expected empty stdout, got: %s", stdout.String())
 		}
 
-		// Also verify run() directly
 		if directCode := run([]string{arg}); directCode != 1 {
 			t.Errorf("run(%q) = %d, want 1", arg, directCode)
 		}
@@ -150,7 +148,6 @@ func TestRun_Healthcheck(t *testing.T) {
 			os.Remove(probeHb)
 		}()
 
-		// Set speed heartbeat mtime to 3 hours ago (max age is 2*30m = 60m)
 		staleTime := time.Now().Add(-3 * time.Hour)
 		if err := os.Chtimes(speedHb, staleTime, staleTime); err != nil {
 			t.Fatalf("os.Chtimes: %v", err)
@@ -179,7 +176,6 @@ func TestRun_Healthcheck(t *testing.T) {
 			os.Remove(probeHb)
 		}()
 
-		// Set probe heartbeat mtime to 5 minutes ago (max age is 2*60s = 120s)
 		staleTime := time.Now().Add(-5 * time.Minute)
 		if err := os.Chtimes(probeHb, staleTime, staleTime); err != nil {
 			t.Fatalf("os.Chtimes: %v", err)

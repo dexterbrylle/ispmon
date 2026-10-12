@@ -69,7 +69,6 @@ func (r *recordingNotifier) clear() {
 func TestPipeline_Integration(t *testing.T) {
 	ctx := context.Background()
 
-	// 1. Setup in-memory store
 	st, err := store.New(":memory:")
 	if err != nil {
 		t.Fatalf("failed creating store: %v", err)
@@ -119,7 +118,6 @@ func TestPipeline_Integration(t *testing.T) {
 	eng.HeartbeatPath = hbPath
 	eng.Now = getTime
 
-	// Seed 35 good checks so coverage is near boundary (minRequired = 48 * 0.75 = 36)
 	dl500, ul500 := 500.0, 500.0
 	for i := 35; i >= 1; i-- {
 		chk := &store.NetworkCheck{
@@ -135,9 +133,6 @@ func TestPipeline_Integration(t *testing.T) {
 		}
 	}
 
-	// =========================================================================
-	// PHASE A: Normal check bringing coverage to 36 checks -> OK, no breach
-	// =========================================================================
 	runner.set(&store.NetworkCheck{
 		Timestamp:      currentTime,
 		Status:         "ok",
@@ -151,23 +146,17 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Fatalf("RunCheck failed: %v", err)
 	}
 
-	// Verify heartbeat file was written
 	if err := health.CheckHeartbeat(hbPath, 5*time.Minute, currentTime); err != nil {
 		t.Errorf("heartbeat was not written on check completion: %v", err)
 	}
 
-	// Verify no alerts were fired
 	if len(recorder.getEvents()) != 0 {
 		t.Fatalf("expected no events on normal check, got %d", len(recorder.getEvents()))
 	}
 
-	// =========================================================================
-	// PHASE B: Measurement error with a healthy probe -> No outage, measurement_error stored
-	// =========================================================================
 	currentTime = currentTime.Add(30 * time.Minute)
 	runner.set(nil, errors.New("ookla cli timed out"))
 
-	// Ensure probe is healthy
 	proberDialSuccess = true
 	if err := eng.RunProbeRound(ctx); err != nil {
 		t.Fatalf("RunProbeRound failed: %v", err)
@@ -177,7 +166,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Fatalf("RunCheck on measurement error failed: %v", err)
 	}
 
-	// Verify stored checks has measurement_error
 	recentChecks, err := st.GetRecentChecks(ctx, currentTime.Add(-1*time.Minute))
 	if err != nil || len(recentChecks) == 0 {
 		t.Fatalf("failed retrieving recent checks: %v", err)
@@ -190,7 +178,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("expected recorded error message, got %v", latest.Error)
 	}
 
-	// Verify probe-driven outage did NOT open
 	if activeOutage, _ := st.GetActiveOutage(ctx); activeOutage != nil {
 		t.Errorf("measurement error should NOT open an outage")
 	}
@@ -198,10 +185,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("measurement error should not trigger notifications")
 	}
 
-	// =========================================================================
-	// PHASE C: SLA Breach open -> Exactly 1 breach alert
-	// =========================================================================
-	// Inject 10 slow checks (100 Mbps < 150 Mbps). Total valid checks ~ 45, 10/45 = 22.2% (>20% rule).
 	dl100, ul100 := 100.0, 100.0
 	testURL := "https://www.speedtest.net/result/c/slow-1"
 	for i := 0; i < 10; i++ {
@@ -228,7 +211,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("expected worst download 100.0, got %v", activeBreach.WorstDownloadMbps)
 	}
 
-	// Verify exactly ONE sla_breach alert was dispatched (duplicates suppressed)
 	events := recorder.getEvents()
 	var breachAlerts int
 	for _, ev := range events {
@@ -242,10 +224,6 @@ func TestPipeline_Integration(t *testing.T) {
 
 	recorder.clear()
 
-	// =========================================================================
-	// PHASE D: SLA Breach resolve -> Speeds recover, exactly 1 resolved alert
-	// =========================================================================
-	// Inject fast checks across 24h window so slow checks roll out of rolling window
 	for i := 0; i < 48; i++ {
 		currentTime = currentTime.Add(30 * time.Minute)
 		runner.set(&store.NetworkCheck{
@@ -282,10 +260,6 @@ func TestPipeline_Integration(t *testing.T) {
 
 	recorder.clear()
 
-	// =========================================================================
-	// PHASE E: Probe-driven Outage Open and Restore
-	// =========================================================================
-	// Round 1: Probe fails at t1
 	t1 := currentTime.Add(60 * time.Second)
 	currentTime = t1
 	proberDialSuccess = false
@@ -296,7 +270,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("outage should not open after only 1 round failure")
 	}
 
-	// Round 2: Probe fails at t2
 	t2 := t1.Add(60 * time.Second)
 	currentTime = t2
 	if err := eng.RunProbeRound(ctx); err != nil {
@@ -306,7 +279,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("outage should not open after only 2 round failures")
 	}
 
-	// Round 3: Probe fails at t3 -> Outage opens! started_at must be t1!
 	t3 := t2.Add(60 * time.Second)
 	currentTime = t3
 	if err := eng.RunProbeRound(ctx); err != nil {
@@ -326,7 +298,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Fatalf("expected no alert while offline, got %v", events)
 	}
 
-	// Round 4: Still down -> No duplicate alert
 	currentTime = t3.Add(60 * time.Second)
 	if err := eng.RunProbeRound(ctx); err != nil {
 		t.Fatalf("probe round 4 failed: %v", err)
@@ -335,7 +306,6 @@ func TestPipeline_Integration(t *testing.T) {
 		t.Errorf("expected no duplicate outage alert while still down")
 	}
 
-	// Round 5: Connectivity restored at t5
 	t5 := currentTime.Add(60 * time.Second)
 	currentTime = t5
 	proberDialSuccess = true

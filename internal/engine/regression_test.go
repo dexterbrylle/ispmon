@@ -299,7 +299,6 @@ func TestEngine_RunRetentionPrune(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Insert an old check (100 days old)
 	oldCheck := &store.NetworkCheck{
 		Timestamp: now.AddDate(0, 0, -100),
 		Status:    "ok",
@@ -309,12 +308,10 @@ func TestEngine_RunRetentionPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First prune run today
 	if err := e.RunRetentionPrune(ctx); err != nil {
 		t.Fatalf("unexpected error in RunRetentionPrune: %v", err)
 	}
 
-	// Check should be pruned
 	checks, err := st.GetRecentChecks(ctx, now.AddDate(0, 0, -200))
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +320,6 @@ func TestEngine_RunRetentionPrune(t *testing.T) {
 		t.Fatalf("expected 0 checks after prune, got %d", len(checks))
 	}
 
-	// Verify kv marker was set
 	val, err := st.GetValue(ctx, "last_retention_date")
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +328,6 @@ func TestEngine_RunRetentionPrune(t *testing.T) {
 		t.Fatalf("expected last_retention_date '2026-10-11', got %q", val)
 	}
 
-	// Running again on the same day is a no-op
 	if err := e.RunRetentionPrune(ctx); err != nil {
 		t.Fatalf("unexpected error in second RunRetentionPrune: %v", err)
 	}
@@ -360,17 +355,14 @@ func TestEngine_ProbeHeartbeatTouched(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Prior to running probe, probe heartbeat should not exist
 	if err := health.CheckHeartbeat(e.ProbeHeartbeatPath, time.Minute, time.Now()); err == nil {
 		t.Fatal("expected probe heartbeat to not exist yet")
 	}
 
-	// Run probe round
 	if err := e.RunProbeRound(ctx); err != nil {
 		t.Fatalf("unexpected error in RunProbeRound: %v", err)
 	}
 
-	// Probe heartbeat must now exist and be fresh
 	if err := health.CheckHeartbeat(e.ProbeHeartbeatPath, time.Minute, time.Now().UTC()); err != nil {
 		t.Fatalf("expected probe heartbeat to be fresh: %v", err)
 	}
@@ -405,8 +397,6 @@ func TestEngine_SummaryTimezoneLabel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 20:00 UTC - 6h = 14:00 UTC = 10:00 EDT
-	// 20:00 UTC = 16:00 EDT
 	expectedBody := "Performance overview for period 10:00 to 16:00 EDT."
 	if dispatched.Body != expectedBody {
 		t.Errorf("expected summary body %q, got %q", expectedBody, dispatched.Body)

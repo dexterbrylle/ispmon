@@ -68,7 +68,6 @@ func (r *OoklaRunner) Run(ctx context.Context) (*store.NetworkCheck, error) {
 
 	now := r.Now().UTC()
 
-	// Public IP check with 10s timeout (non-fatal)
 	var publicIP *string
 	if r.FetchIP != nil {
 		ipCtx, cancelIP := context.WithTimeout(ctx, 10*time.Second)
@@ -79,13 +78,11 @@ func (r *OoklaRunner) Run(ctx context.Context) (*store.NetworkCheck, error) {
 		}
 	}
 
-	// Ookla speed test with 120s timeout
 	runCtx, cancelRun := context.WithTimeout(ctx, 120*time.Second)
 	defer cancelRun()
 
 	out, err := r.CmdRunner(runCtx, r.BinaryPath, "--format=json", "--accept-license", "--accept-gdpr")
 	if ctx.Err() != nil {
-		// Parent context was canceled (daemon shutdown)
 		return nil, ctx.Err()
 	}
 

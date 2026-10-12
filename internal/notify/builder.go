@@ -36,7 +36,6 @@ func BuildSLABreachEvent(
 		{Name: "Worst Upload", Value: worstUpStr, Inline: true},
 	}
 
-	// Find the Ookla result_url of the worst check (lowest download speed)
 	var worstURL string
 	var lowestDown float64 = 1e9
 	for _, c := range eval.BreachedChecks {

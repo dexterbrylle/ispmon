@@ -29,7 +29,6 @@ func TestProber_AllTargetsSucceed(t *testing.T) {
 }
 
 func TestProber_PartialTargetFailureIsOK(t *testing.T) {
-	// A round is "failed" only if ALL targets fail.
 	targets := []string{"1.1.1.1:443", "9.9.9.9:443"}
 	p := probe.New(targets, 3)
 	p.Dial = func(ctx context.Context, network, address string) error {

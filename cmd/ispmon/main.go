@@ -99,7 +99,6 @@ func runHealthcheck(stdout, stderr io.Writer) int {
 }
 
 func runDaemon(stdout, stderr io.Writer) int {
-	// Logging via log/slog to stdout only
 	logger := slog.New(slog.NewTextHandler(stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -114,7 +113,6 @@ func runDaemon(stdout, stderr io.Writer) int {
 	logger.Info("configuration loaded successfully", "plan_name", cfg.ISPPlanName)
 	cfg.LogNotifiers(logger)
 
-	// Verify speedtest binary is installed
 	binPath, err := speedtest.LookPath()
 	if err != nil {
 		logger.Error(err.Error())
@@ -122,7 +120,6 @@ func runDaemon(stdout, stderr io.Writer) int {
 	}
 	logger.Info("located speedtest CLI binary", "path", binPath)
 
-	// Open DB and run migrations
 	st, err := store.New(cfg.DBPath)
 	if err != nil {
 		logger.Error("failed opening database", "path", cfg.DBPath, "error", err)
@@ -131,7 +128,6 @@ func runDaemon(stdout, stderr io.Writer) int {
 	defer st.Close()
 	logger.Info("database opened and migrations applied", "path", cfg.DBPath)
 
-	// Prepare notifiers
 	var notifiers []notify.Notifier
 	if cfg.DiscordEnabled() {
 		notifiers = append(notifiers, notify.NewDiscordNotifier(cfg.DiscordWebhookURL, nil))
@@ -147,7 +143,6 @@ func runDaemon(stdout, stderr io.Writer) int {
 	}
 	dispatcher := notify.NewDispatcher(notifiers, logger)
 
-	// Recover existing outage state if active in DB
 	activeOutage, err := st.GetActiveOutage(context.Background())
 	if err != nil {
 		logger.Warn("could not query active outage on startup", "error", err)
@@ -159,7 +154,6 @@ func runDaemon(stdout, stderr io.Writer) int {
 
 	eng := engine.New(cfg, st, runner, prober, outageSM, dispatcher, logger)
 
-	// Graceful shutdown on SIGINT / SIGTERM within 10s
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

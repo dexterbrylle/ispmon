@@ -77,7 +77,6 @@ func BuildMIMEMessage(from, to string, e Event) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 
-	// Headers
 	buf.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
 	buf.WriteString(fmt.Sprintf("Message-ID: <%x@ispmon>\r\n", id))
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
@@ -86,7 +85,6 @@ func BuildMIMEMessage(from, to string, e Event) ([]byte, error) {
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	buf.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", boundary))
 
-	// HTML Body Part
 	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
 	buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
@@ -101,7 +99,6 @@ func BuildMIMEMessage(from, to string, e Event) ([]byte, error) {
 	}
 	buf.WriteString("\r\n\r\n")
 
-	// Attachments
 	for _, att := range e.Attachments {
 		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 		mimeType := att.MIMEType

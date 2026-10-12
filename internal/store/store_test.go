@@ -51,7 +51,6 @@ func TestStore_Migrations_V0_to_V1(t *testing.T) {
 		t.Fatalf("expected version 1 after migration, got %d", v1)
 	}
 
-	// Idempotency check: running ApplyMigrations again should be a no-op
 	if err := store.ApplyMigrations(db); err != nil {
 		t.Fatalf("subsequent migration run failed: %v", err)
 	}
@@ -175,7 +174,6 @@ func TestStore_OneOpenSLABreachInvariant(t *testing.T) {
 		t.Fatalf("expected positive ID, got %d", id1)
 	}
 
-	// Invariant test: Starting another open breach must fail!
 	ep2 := &store.SLABreachEpisode{
 		StartedAt:           now,
 		ViolatingCheckCount: 6,
@@ -187,7 +185,6 @@ func TestStore_OneOpenSLABreachInvariant(t *testing.T) {
 		t.Fatalf("expected ErrOpenEpisodeExists, got %v", err)
 	}
 
-	// Update active breach with worse speeds
 	worseDown := 75.0
 	ep1.WorstDownloadMbps = &worseDown
 	ep1.ViolatingCheckCount = 6
@@ -205,7 +202,6 @@ func TestStore_OneOpenSLABreachInvariant(t *testing.T) {
 		t.Fatalf("expected updated worst download 75.0, got %+v", active)
 	}
 
-	// End active breach
 	endedAt := now
 	if err := s.EndSLABreach(ctx, ep1.ID, endedAt); err != nil {
 		t.Fatalf("failed closing breach: %v", err)
@@ -219,7 +215,6 @@ func TestStore_OneOpenSLABreachInvariant(t *testing.T) {
 		t.Fatalf("expected no active breach after close, got %+v", activeAfter)
 	}
 
-	// Now a new breach can be started
 	id3, err := s.StartSLABreach(ctx, ep2)
 	if err != nil {
 		t.Fatalf("failed starting new breach after prior closed: %v", err)
@@ -255,7 +250,6 @@ func TestStore_OneOpenOutageInvariant(t *testing.T) {
 		t.Fatalf("expected positive id, got %d", id1)
 	}
 
-	// Invariant test: Starting another open outage must fail!
 	ep2 := &store.OutageEpisode{
 		StartedAt: now,
 		Reason:    "Secondary drop",
@@ -265,7 +259,6 @@ func TestStore_OneOpenOutageInvariant(t *testing.T) {
 		t.Fatalf("expected ErrOpenEpisodeExists, got %v", err)
 	}
 
-	// Close outage
 	endedAt := now
 	duration := 300
 	if err := s.EndOutage(ctx, ep1.ID, endedAt, duration); err != nil {
@@ -280,7 +273,6 @@ func TestStore_OneOpenOutageInvariant(t *testing.T) {
 		t.Fatalf("expected no active outage, got %+v", activeAfter)
 	}
 
-	// Now starting a new outage should succeed
 	id2, err := s.StartOutage(ctx, ep2)
 	if err != nil {
 		t.Fatalf("failed starting subsequent outage: %v", err)
@@ -295,7 +287,6 @@ func TestStore_EpisodesBetween(t *testing.T) {
 	ctx := context.Background()
 
 	base := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
-	// Outage 1: 01:00 to 01:10
 	out1 := &store.OutageEpisode{StartedAt: base.Add(1 * time.Hour), Reason: "Drop 1"}
 	id1, err := s.StartOutage(ctx, out1)
 	if err != nil {
@@ -305,7 +296,6 @@ func TestStore_EpisodesBetween(t *testing.T) {
 		t.Fatalf("failed closing out1: %v", err)
 	}
 
-	// Outage 2: 05:00 (still open)
 	out2 := &store.OutageEpisode{StartedAt: base.Add(5 * time.Hour), Reason: "Drop 2"}
 	if _, err := s.StartOutage(ctx, out2); err != nil {
 		t.Fatalf("failed starting out2: %v", err)
@@ -331,7 +321,6 @@ func TestStore_PruneOldData(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 
-	// 1. RetentionDays <= 0 does nothing
 	n, err := s.PruneOldData(ctx, 0, now)
 	if err != nil {
 		t.Fatalf("unexpected error with retention 0: %v", err)
@@ -340,7 +329,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("expected 0 deleted for retention 0, got %d", n)
 	}
 
-	// 2. Insert checks: one 100 days old, one 10 days old
 	oldCheck := &store.NetworkCheck{
 		Timestamp: now.AddDate(0, 0, -100),
 		Status:    "ok",
@@ -358,8 +346,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed saving fresh check: %v", err)
 	}
 
-	// 3. Insert SLA episodes:
-	// - old closed breach (ended 95 days ago)
 	oldBreach := &store.SLABreachEpisode{
 		StartedAt:           now.AddDate(0, 0, -100),
 		ViolatingCheckCount: 5,
@@ -374,7 +360,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed ending old breach: %v", err)
 	}
 
-	// - fresh closed breach (ended 5 days ago)
 	freshBreach := &store.SLABreachEpisode{
 		StartedAt:           now.AddDate(0, 0, -10),
 		ViolatingCheckCount: 3,
@@ -389,8 +374,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed ending fresh breach: %v", err)
 	}
 
-	// 4. Insert Outages:
-	// - old closed outage (ended 95 days ago)
 	oldOutage := &store.OutageEpisode{
 		StartedAt: now.AddDate(0, 0, -100),
 		Reason:    "old drop",
@@ -403,7 +386,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed ending old outage: %v", err)
 	}
 
-	// - fresh closed outage (ended 5 days ago)
 	freshOutage := &store.OutageEpisode{
 		StartedAt: now.AddDate(0, 0, -10),
 		Reason:    "fresh drop",
@@ -416,7 +398,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed ending fresh outage: %v", err)
 	}
 
-	// - open outage started 120 days ago (must NOT be pruned!)
 	openOutage := &store.OutageEpisode{
 		StartedAt: now.AddDate(0, 0, -120),
 		Reason:    "long-running open outage",
@@ -425,7 +406,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("failed starting open outage: %v", err)
 	}
 
-	// Run retention prune: 90 days
 	deleted, err := s.PruneOldData(ctx, 90, now)
 	if err != nil {
 		t.Fatalf("failed running PruneOldData: %v", err)
@@ -434,7 +414,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Errorf("expected 3 deleted rows, got %d", deleted)
 	}
 
-	// Verify remaining checks
 	checks, err := s.GetRecentChecks(ctx, now.AddDate(0, 0, -200))
 	if err != nil {
 		t.Fatalf("failed getting checks: %v", err)
@@ -446,7 +425,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Errorf("expected fresh check to survive, got check ID %d", checks[0].ID)
 	}
 
-	// Verify remaining SLA breaches
 	breaches, err := s.GetSLABreachEpisodesBetween(ctx, now.AddDate(0, 0, -200), now)
 	if err != nil {
 		t.Fatalf("failed getting breaches: %v", err)
@@ -458,7 +436,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Errorf("expected fresh breach to survive, got breach ID %d", breaches[0].ID)
 	}
 
-	// Verify remaining outages (fresh closed outage + open outage)
 	outages, err := s.GetOutageEpisodesBetween(ctx, now.AddDate(0, 0, -200), now)
 	if err != nil {
 		t.Fatalf("failed getting outages: %v", err)
@@ -467,7 +444,6 @@ func TestStore_PruneOldData(t *testing.T) {
 		t.Fatalf("expected 2 remaining outages (1 fresh closed + 1 open), got %d", len(outages))
 	}
 
-	// Active open outage still exists
 	activeOutage, err := s.GetActiveOutage(ctx)
 	if err != nil {
 		t.Fatalf("failed querying active outage: %v", err)
@@ -481,11 +457,9 @@ func TestStore_TimestampUTCZInvariant(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 
-	// Non-UTC timestamp with positive offset (Asia/Tokyo +09:00)
 	tokyoLoc := time.FixedZone("JST", 9*3600)
 	tokyoTime := time.Date(2026, 10, 11, 18, 30, 45, 0, tokyoLoc) // 09:30:45 UTC
 
-	// Non-UTC timestamp with negative offset (America/New_York -04:00)
 	nyLoc := time.FixedZone("EDT", -4*3600)
 	nyTime := time.Date(2026, 10, 11, 5, 30, 45, 0, nyLoc) // 09:30:45 UTC
 
@@ -509,7 +483,6 @@ func TestStore_TimestampUTCZInvariant(t *testing.T) {
 		t.Fatalf("failed saving check 2: %v", err)
 	}
 
-	// 1. Direct raw SQL check: verify SQLite stored string format is strictly UTC RFC 3339 ending in "Z"
 	for _, id := range []int64{id1, id2} {
 		var rawTs string
 		if err := s.DB().QueryRowContext(ctx, "SELECT timestamp FROM network_checks WHERE id = ?", id).Scan(&rawTs); err != nil {
@@ -523,7 +496,6 @@ func TestStore_TimestampUTCZInvariant(t *testing.T) {
 		}
 	}
 
-	// 2. String range comparison works properly with UTC bounds
 	start := time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
 	checks, err := s.GetChecksBetween(ctx, start, end)

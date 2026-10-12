@@ -1,12 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-  ispmon launchd configuration (macOS)
-  Install:
-    1. Edit placeholders below (<YOUR_USERNAME>, path to ispmon binary and .env)
-    2. cp com.dexterbrylle.ispmon.plist ~/Library/LaunchAgents/
-    3. launchctl load ~/Library/LaunchAgents/com.dexterbrylle.ispmon.plist
--->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -14,21 +7,17 @@
 
     <key>ProgramArguments</key>
     <array>
-        <!-- EDIT PLACEHOLDER: Path to ispmon binary -->
         <string>/usr/local/bin/ispmon</string>
         <string>run</string>
     </array>
 
-    <!-- EDIT PLACEHOLDER: Data directory for SQLite database and heartbeat -->
     <key>WorkingDirectory</key>
     <string>/Users/YOUR_USERNAME/.local/share/ispmon</string>
 
-    <!-- EDIT PLACEHOLDER: Environment configuration file -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <!-- Or source from file using wrapper script or specify individual overrides here -->
         <key>DB_PATH</key>
         <string>/Users/YOUR_USERNAME/.local/share/ispmon/ispmon.db</string>
     </dict>
@@ -39,7 +28,6 @@
     <key>KeepAlive</key>
     <true/>
 
-    <!-- Logs go to stdout/stderr stream -->
     <key>StandardOutPath</key>
     <string>/Users/YOUR_USERNAME/.local/share/ispmon/ispmon.log</string>
     <key>StandardErrorPath</key>

@@ -90,7 +90,6 @@ func (sm *StateMachine) Step(roundOK bool, reason string, now time.Time) Action 
 		return Action{Kind: ActionNone}
 	}
 
-	// Round is successful
 	sm.consecutiveFails = 0
 	sm.firstFailedAt = time.Time{}
 

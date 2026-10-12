@@ -170,14 +170,12 @@ func TestReport_BuildPDF(t *testing.T) {
 func TestReport_SummaryText(t *testing.T) {
 	data := sampleData()
 
-	// Default UTC
 	utcText := report.SummaryText(data, time.UTC)
 	expectedUTC := "Performance overview for period 00:00 to 00:00 UTC."
 	if utcText != expectedUTC {
 		t.Errorf("expected UTC summary text %q, got %q", expectedUTC, utcText)
 	}
 
-	// Non-UTC timezone (e.g. New York EDT, -4 hours)
 	nyLoc := time.FixedZone("EDT", -4*3600)
 	nyText := report.SummaryText(data, nyLoc)
 	expectedNY := "Performance overview for period 20:00 to 20:00 EDT."
@@ -185,7 +183,6 @@ func TestReport_SummaryText(t *testing.T) {
 		t.Errorf("expected EDT summary text %q, got %q", expectedNY, nyText)
 	}
 
-	// Tokyo (+9 hours)
 	tokyoLoc := time.FixedZone("JST", 9*3600)
 	tokyoText := report.SummaryText(data, tokyoLoc)
 	expectedTokyo := "Performance overview for period 09:00 to 09:00 JST."

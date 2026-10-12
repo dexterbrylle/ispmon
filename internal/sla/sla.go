@@ -63,7 +63,6 @@ func IsBelowThreshold(down, up float64, thresholdDown, thresholdUp float64) bool
 
 // Evaluate performs pure calculation of SLA status over checks within the rolling window.
 // measurement_error and outage periods are excluded from the ratio.
-// Documented note: Excluding failed checks shrinks coverage and may defer evaluation (intended).
 func Evaluate(checks []store.NetworkCheck, now time.Time, cfg EvaluationConfig) EvaluationResult {
 	expected := (cfg.SLAWindowHours * 60) / cfg.CheckIntervalMinutes
 	if expected < 1 {
@@ -77,7 +76,6 @@ func Evaluate(checks []store.NetworkCheck, now time.Time, cfg EvaluationConfig) 
 
 	cutoff := now.Add(-time.Duration(cfg.SLAWindowHours) * time.Hour)
 
-	// Filter valid checks within window
 	var validChecks []store.NetworkCheck
 	for _, c := range checks {
 		if c.Status == "ok" && c.DownloadMbps != nil && c.UploadMbps != nil {
@@ -122,7 +120,6 @@ func Evaluate(checks []store.NetworkCheck, now time.Time, cfg EvaluationConfig) 
 	violatingCount := len(violatingChecks)
 	violationPct := (float64(violatingCount) / float64(totalValid)) * 100.0
 
-	// Breach if strictly greater than SLA_VIOLATION_PCT
 	status := StatusOK
 	if violationPct > cfg.SLAViolationPct {
 		status = StatusBreach
@@ -149,7 +146,6 @@ func DecideAction(activeEpisode *store.SLABreachEpisode, eval EvaluationResult, 
 
 	if eval.Status == StatusBreach {
 		if activeEpisode == nil {
-			// No open episode and breach -> open episode and send ONE alert with evidence
 			newEp := &store.SLABreachEpisode{
 				StartedAt:           now.UTC(),
 				WorstDownloadMbps:   eval.WorstDownloadMbps,
@@ -165,7 +161,6 @@ func DecideAction(activeEpisode *store.SLABreachEpisode, eval EvaluationResult, 
 			}
 		}
 
-		// Open episode and still breach -> update counts silently
 		updatedEp := *activeEpisode
 		updatedEp.ViolatingCheckCount = eval.ViolatingCount
 		updatedEp.TotalCheckCount = eval.TotalValidCount
@@ -187,9 +182,7 @@ func DecideAction(activeEpisode *store.SLABreachEpisode, eval EvaluationResult, 
 		}
 	}
 
-	// eval.Status == StatusOK
 	if activeEpisode != nil {
-		// Open episode and no breach -> close it and send a resolved notice
 		return EngineAction{
 			Kind:           ActionResolveBreach,
 			Episode:        activeEpisode,

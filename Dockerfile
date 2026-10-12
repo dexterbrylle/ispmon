@@ -1,4 +1,3 @@
-# Multi-stage build for ispmon
 FROM golang:1.22.12 AS builder
 
 WORKDIR /src
@@ -18,10 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /bin/ispmon ./cmd/ispmon
 
-# Final runtime image based on debian:bookworm-slim
 FROM debian:bookworm-slim
 
-# Install official Ookla speedtest CLI at build time via signed apt repo with pinned version
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates gnupg && \
     install -d -m 0755 /etc/apt/keyrings && \
@@ -33,7 +30,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Run as non-root user
 RUN useradd -u 10001 -m -s /bin/bash ispmon && \
     mkdir -p /data && \
     chown -R ispmon:ispmon /data

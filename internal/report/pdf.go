@@ -26,7 +26,6 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	pdf.SetAutoPageBreak(true, 12)
 	pdf.AddPage()
 
-	// Title
 	pdf.SetFont("Arial", "B", 16)
 	pdf.CellFormat(0, 8, "ISP Performance & Evidence Report", "", 1, "L", false, 0, "")
 
@@ -40,7 +39,6 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	pdf.CellFormat(0, 6, periodStr, "", 1, "L", false, 0, "")
 	pdf.Ln(4)
 
-	// Section 1: Summary Overview
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont("Arial", "B", 12)
 	pdf.CellFormat(0, 6, "1. Executive Summary", "B", 1, "L", false, 0, "")
@@ -57,7 +55,6 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	colW1 := 46.0
 	colW2 := 46.0
 
-	// Summary key-values table
 	summaryRows := [][]string{
 		{"Total Checks:", fmt.Sprintf("%d", data.TotalChecks), "Avg Download:", formatFloat(data.AvgDownloadMbps, "Mbps")},
 		{"Successful Checks:", fmt.Sprintf("%d", data.OKChecks), "Min/Max Download:", fmt.Sprintf("%s / %s", formatFloat(data.MinDownloadMbps, "Mbps"), formatFloat(data.MaxDownloadMbps, "Mbps"))},
@@ -79,7 +76,6 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	}
 	pdf.Ln(4)
 
-	// Section 2: SLA Breach & Outage Episodes
 	pdf.SetFont("Arial", "B", 12)
 	pdf.CellFormat(0, 6, "2. SLA Breach & Outage Episodes", "B", 1, "L", false, 0, "")
 	pdf.Ln(2)
@@ -151,7 +147,6 @@ func BuildPDF(data SummaryData, loc *time.Location) ([]byte, error) {
 	}
 	pdf.Ln(3)
 
-	// Section 3: Performance Measurements Table
 	pdf.SetFont("Arial", "B", 12)
 	pdf.CellFormat(0, 6, "3. Network Checks Record", "B", 1, "L", false, 0, "")
 	pdf.Ln(2)

@@ -170,7 +170,6 @@ func BuildSummaryData(
 		if o.DurationSeconds != nil {
 			data.TotalDowntimeSeconds += *o.DurationSeconds
 		} else if openOutage != nil && o.ID == openOutage.ID {
-			// Currently open outage during period
 			curSecs := int(end.Sub(o.StartedAt).Seconds())
 			if curSecs > 0 {
 				data.TotalDowntimeSeconds += curSecs

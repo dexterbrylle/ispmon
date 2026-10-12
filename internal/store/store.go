@@ -51,7 +51,6 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("failed setting foreign_keys: %w", err)
 	}
 
-	// Enable incremental auto-vacuum for newly created databases
 	_, _ = db.Exec("PRAGMA auto_vacuum = INCREMENTAL;")
 
 	if err := ApplyMigrations(db); err != nil {
@@ -629,7 +628,6 @@ func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Ti
 
 	var totalDeleted int64
 
-	// 1. Delete old network checks
 	res, err := tx.ExecContext(ctx, "DELETE FROM network_checks WHERE timestamp < ?", cutoffStr)
 	if err != nil {
 		return 0, fmt.Errorf("failed pruning network_checks: %w", err)
@@ -638,7 +636,6 @@ func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Ti
 		totalDeleted += n
 	}
 
-	// 2. Delete old closed SLA breach episodes
 	res, err = tx.ExecContext(ctx, "DELETE FROM sla_breach_episodes WHERE ended_at IS NOT NULL AND ended_at < ?", cutoffStr)
 	if err != nil {
 		return 0, fmt.Errorf("failed pruning sla_breach_episodes: %w", err)
@@ -647,7 +644,6 @@ func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Ti
 		totalDeleted += n
 	}
 
-	// 3. Delete old closed outage episodes
 	res, err = tx.ExecContext(ctx, "DELETE FROM outage_episodes WHERE ended_at IS NOT NULL AND ended_at < ?", cutoffStr)
 	if err != nil {
 		return 0, fmt.Errorf("failed pruning outage_episodes: %w", err)
@@ -656,7 +652,6 @@ func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Ti
 		totalDeleted += n
 	}
 
-	// 4. Clean up any notification_outbox references for deleted episodes
 	_, _ = tx.ExecContext(ctx, "DELETE FROM notification_outbox WHERE episode_table = 'sla_breach_episodes' AND episode_id NOT IN (SELECT id FROM sla_breach_episodes)")
 	_, _ = tx.ExecContext(ctx, "DELETE FROM notification_outbox WHERE episode_table = 'outage_episodes' AND episode_id NOT IN (SELECT id FROM outage_episodes)")
 
@@ -664,7 +659,6 @@ func (s *Store) PruneOldData(ctx context.Context, retentionDays int, now time.Ti
 		return 0, fmt.Errorf("failed committing prune transaction: %w", err)
 	}
 
-	// Reclaim storage sensibly outside transaction
 	if err := s.Vacuum(ctx); err != nil {
 		return totalDeleted, fmt.Errorf("failed vacuuming database after prune: %w", err)
 	}

@@ -1,30 +1,13 @@
 # ispmon: ISP Speed and SLA Monitor
 
-`ispmon` is a background program written in Go.
-It monitors your internet connection.
-It collects evidence when your Internet Service Provider (ISP) does not deliver the contracted speed.
+`ispmon` monitors your internet connection and collects evidence for ISP disputes.
+It runs the official Ookla `speedtest` CLI, stores results in SQLite, checks speed
+against your contract, and detects outages with separate TCP probes. It sends
+Discord and email notifications and creates CSV and PDF reports.
 
----
+## Quick start
 
-## Purpose
-
-Internet contracts specify a minimum guaranteed speed.
-Contracts also specify an uptime commitment.
-When your network connection becomes slow, customer service asks for proof.
-
-`ispmon` helps you collect this proof:
-1. It runs the official Ookla `speedtest` Command Line Interface (CLI) at a set interval.
-2. It saves speed, latency, jitter, packet loss, and proof links in a local SQLite database.
-3. It evaluates contract compliance across a rolling time window.
-4. It detects network outages with separate TCP probes.
-5. It creates dispute packets with CSV and PDF reports.
-6. It sends notifications through Discord webhooks and email.
-
----
-
-## Quick Start
-
-### Option 1: Docker Compose (Recommended)
+### Docker Compose
 
 1. Copy the example configuration file:
    ```bash
@@ -47,13 +30,11 @@ When your network connection becomes slow, customer service asks for proof.
    docker compose logs -f
    ```
 
----
+### Binary setup
 
-### Option 2: Binary Setup
+#### 1. Install the official Ookla Speedtest CLI
 
-#### 1. Install the Official Ookla Speedtest CLI
-
-You must install the official Ookla CLI tool.
+Install the official Ookla CLI tool.
 
 - **macOS:**
   ```bash
@@ -72,21 +53,23 @@ You must install the official Ookla CLI tool.
   sudo dnf install speedtest
   ```
 
-#### 2. Build the Program
+#### 2. Build the program
 
-You must have Go 1.22 or newer to build the program.
+Building requires Go 1.26 or newer.
 
 Build the binary:
+
 ```bash
 make build
 ```
 
 Or install the binary into your Go binary directory:
+
 ```bash
 go install ./cmd/ispmon
 ```
 
-#### 3. Run the Program
+#### 3. Run the program
 
 1. Copy the configuration file:
    ```bash
@@ -101,13 +84,12 @@ go install ./cmd/ispmon
    ```
 
 Available commands:
+
 - `ispmon run`: Starts the monitoring daemon.
 - `ispmon healthcheck`: Checks heartbeat files for liveness.
 - `ispmon version`: Shows version and build details.
 
----
-
-## Service Deployment
+## Service deployment
 
 You can run `ispmon` as a system service.
 Service templates are in the `deploy/` directory.
@@ -132,20 +114,17 @@ Service templates are in the `deploy/` directory.
    sudo systemctl enable --now ispmon
    ```
 
----
+## Configuration reference
 
-## Configuration Reference
-
-The program reads all configuration values from environment variables.
-You can set them in `.env`.
+`ispmon` reads environment variables and loads an optional `.env` file.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ISP_PLAN_NAME` | **Yes** | *None* | Plan name shown in alerts and reports. |
-| `ISP_PLAN_SPEED` | **Yes** | *None* | Advertised download bandwidth in Mbps. |
-| `ISP_PLAN_UPLOAD_SPEED` | **Yes** | *None* | Advertised upload bandwidth in Mbps. |
-| `ISP_PLAN_THRESHOLD` | **Yes** | *None* | Minimum download speed in Mbps. |
-| `ISP_PLAN_UPLOAD_THRESHOLD` | **Yes** | *None* | Minimum upload speed in Mbps. |
+| `ISP_PLAN_NAME` | Yes | None | Plan name shown in alerts and reports. |
+| `ISP_PLAN_SPEED` | Yes | None | Advertised download bandwidth in Mbps. |
+| `ISP_PLAN_UPLOAD_SPEED` | Yes | None | Advertised upload bandwidth in Mbps. |
+| `ISP_PLAN_THRESHOLD` | Yes | None | Minimum download speed in Mbps. |
+| `ISP_PLAN_UPLOAD_THRESHOLD` | Yes | None | Minimum upload speed in Mbps. |
 | `SLA_WINDOW_HOURS` | No | `24` | Rolling evaluation window in hours. |
 | `SLA_VIOLATION_PCT` | No | `20.0` | Violation percentage to declare a breach. |
 | `SLA_MIN_COVERAGE` | No | `0.75` | Minimum ratio of checks needed to evaluate. |
@@ -161,127 +140,67 @@ You can set them in `.env`.
 | `PROBE_INTERVAL_SECONDS` | No | `60` | Seconds between probe rounds. |
 | `PROBE_FAIL_ROUNDS` | No | `3` | Failed rounds needed to open an outage. |
 | `PROBE_TIMEOUT_SECONDS` | No | `3` | Dial timeout per target in seconds. |
-| `DISCORD_WEBHOOK_URL` | No | *Empty* | Discord webhook URL. Leave empty to disable. |
-| `SMTP_SERVER` | No | *Empty* | SMTP server hostname. |
+| `DISCORD_WEBHOOK_URL` | No | Empty | Discord webhook URL. Leave empty to disable. |
+| `SMTP_SERVER` | No | Empty | SMTP server hostname. |
 | `SMTP_PORT` | No | `587` | SMTP port (uses STARTTLS). |
-| `SMTP_USER` | No | *Empty* | SMTP username. |
-| `SMTP_PASSWORD` | No | *Empty* | SMTP password. The program does not log passwords. |
-| `EMAIL_RECIPIENT` | No | *Empty* | Recipient email address for reports. |
+| `SMTP_USER` | No | Empty | SMTP username. |
+| `SMTP_PASSWORD` | No | Empty | SMTP password. The program does not log passwords. |
+| `EMAIL_RECIPIENT` | No | Empty | Recipient email address for reports. |
 
-*Note: Email notifications activate only when you set the server, port, user, password, and recipient.*
+Email notifications require a server, username, password, and recipient.
+`SMTP_PORT` defaults to `587`.
 
----
+## Outages and speed checks
 
-## Two-Engine Architecture
+TCP probes and speed tests run independently. A failed speed test records
+`measurement_error` and does not open an outage.
 
-`ispmon` separates speed tests from outage detection.
-This separation prevents connection drops from corrupting speed calculations.
+### Outages
 
-```
-+-----------------------------------------------------------------------+
-|                             ispmon Daemon                             |
-|                                                                       |
-|   +-----------------------+               +-----------------------+   |
-|   |   TCP Outage Probe    |               |    Ookla Speed Test   |   |
-|   |   (Every 60s)         |               |    (Every 30m)        |   |
-|   +-----------+-----------+               +-----------+-----------+   |
-|               |                                       |               |
-|       All targets fail?                      Speedtest success?       |
-|        /             \                        /               \       |
-|      Yes              No                    Yes                No     |
-|       |               |                      |                  |     |
-|   3 Rounds?        Restore?             Status 'ok'    'measurement_  |
-|       |               |                      |          error' (never |
-|  Open Outage   Close Outage          Evaluate SLA       opens outage) |
-|   (started_at = 1st drop)             over 24h window                 |
-+-----------------------------------------------------------------------+
-```
+By default, the probe dials every target in `PROBE_TARGETS` every 60 seconds.
+A round fails only when all targets fail. After three consecutive failed rounds,
+an outage opens with the first failed round as its start time. The first
+successful round closes it. Each transition sends one alert, and the database
+records the downtime.
 
-### 1. Outage Engine
+### Speed SLA
 
-- The probe dials all targets in `PROBE_TARGETS` with TCP every 60 seconds.
-- A round fails only if all targets fail to connect.
-- An outage episode starts after 3 consecutive failed rounds.
-- The start time is set to the time of the first failed round.
-- The outage episode closes on the first successful round.
-- The engine calculates the total downtime in seconds.
-- The engine sends one alert when the outage starts.
-- The engine sends one alert when the connection restores.
+A successful check violates the contract when download or upload speed falls
+below `ISP_PLAN_THRESHOLD` or `ISP_PLAN_UPLOAD_THRESHOLD`. Failed checks do not
+count toward the violation rate or coverage.
 
-### 2. Speed SLA Engine
+The default 24-hour window expects 48 checks at 30-minute intervals.
+Evaluation requires 75% coverage, or 36 valid checks, which takes about 18 hours.
+Until then, the status is `insufficient_data`, and breaches cannot open or resolve.
+`SLA_WINDOW_HOURS`, `CHECK_INTERVAL_MINUTES`, and `SLA_MIN_COVERAGE` control these
+settings.
 
-- **Valid Checks Only:**
-  - The engine evaluates only successful speed checks (`status='ok'`).
-  - It ignores checks that fail with errors (`measurement_error`).
-  - It ignores checks during network outages.
-  - This rule prevents failed connections from corrupting speed metrics.
+A breach opens when more than 20% of valid checks violate the contract, as set by
+`SLA_VIOLATION_PCT`. It sends one alert with CSV evidence. Later checks update the
+breach metrics without repeating the alert.
 
-- **Threshold Checks:**
-  - A check violates the contract if download or upload speed is below the minimum threshold.
-  - The thresholds are `ISP_PLAN_THRESHOLD` and `ISP_PLAN_UPLOAD_THRESHOLD`.
+A breach resolves when coverage is sufficient and the violation rate falls to
+20% or less. It sends one resolution notice. An outage or missing data leaves an
+open breach unresolved until valid checks confirm recovery.
 
-- **Rolling Window and Warm-Up Period:**
-  - The engine evaluates checks across a rolling window (`SLA_WINDOW_HOURS`).
-  - With default settings (`SLA_WINDOW_HOURS=24`, `CHECK_INTERVAL_MINUTES=30`), a window expects 48 checks: `(24 * 60) / 30 = 48`.
-  - The engine requires at least 75% coverage (`SLA_MIN_COVERAGE=0.75`).
-  - This coverage requires 36 valid checks: `48 * 0.75 = 36`.
-  - At 30-minute intervals, 36 checks take approximately 18 hours.
-  - During this 18-hour warm-up period, the status is `insufficient_data`.
-  - The engine does not open or resolve breaches during this period.
+## Notifications and evidence
 
-- **Breach Declaration:**
-  - A breach occurs when more than 20% (`SLA_VIOLATION_PCT`) of valid checks violate the threshold.
-  - The engine opens a breach episode.
-  - It sends one alert with CSV evidence.
+### Discord alerts
 
-- **Metric Updates:**
-  - Subsequent checks update the breach metrics in the database.
-  - The engine does not send duplicate alert messages while the breach remains open.
+Discord cards are red when a breach or outage starts and green when it ends.
 
-- **Recovery Rules:**
-  - An open breach resolves only when two conditions are true:
-    1. The window contains at least 36 valid checks.
-    2. The violation rate is 20% or less.
-  - When these conditions are met, the engine closes the episode.
-  - It sends one resolution notification.
+### Email reports
 
-- **Insufficient Data Invariant:**
-  - An open breach cannot resolve when data is insufficient.
-  - If a long network outage occurs, valid test data stops.
-  - The breach remains open during this time.
+Email uses SMTP with STARTTLS, on port 587 by default. Breach alerts include an
+HTML summary and CSV evidence. Daily reports run at `DAILY_REPORT_TIME` and include
+an HTML summary, CSV, and PDF.
 
-- **Decision on Auto-Closing:**
-  - Open breaches do not close automatically when data is insufficient.
-  - A resolution notice proves that network speed returned to contract levels.
-  - If breaches closed during outages, the system would send false recovery alerts.
-  - Closing breaches without data would also split one long failure into multiple short episodes.
-  - This would harm evidence collection for ISP disputes.
-  - Therefore, a breach stays open until valid tests confirm recovery.
-
----
-
-## Notifications and Evidence
-
-### Discord Alerts
-
-The program sends embed cards to Discord:
-- **Red Card:** Sent when an SLA breach starts or when an outage starts.
-- **Green Card:** Sent when an SLA breach resolves or when an outage ends.
-
-### Email Reports
-
-The program sends emails through SMTP with STARTTLS on port 587:
-- **Breach Alert:** Contains an HTML summary and an in-memory CSV evidence file.
-- **Daily Report:** Sent at `DAILY_REPORT_TIME`. Contains an HTML summary, a full CSV file, and a PDF document.
-
----
-
-## Database and Backups
+## Database and backups
 
 `ispmon` stores all data in a local SQLite file (`data/ispmon.db`).
 The database uses Write-Ahead Logging (WAL) mode.
 
-### How to Back Up the Database
+### Back up the database
 
 When you copy a database in WAL mode, you must handle active write files.
 
@@ -295,8 +214,6 @@ When you copy a database in WAL mode, you must handle active write files.
   ```bash
   sqlite3 data/ispmon.db ".backup /path/to/backup/ispmon-backup.db"
   ```
-
----
 
 ## Troubleshooting
 
@@ -313,14 +230,11 @@ When you copy a database in WAL mode, you must handle active write files.
   Make sure STARTTLS is supported.
   Use an application password for Google accounts.
 
----
-
-## License and Ookla Notice
+## License and Ookla notice
 
 `ispmon` is open-source software under the [MIT License](LICENSE).
 Copyright (c) 2026 Dexter Brylle.
 
-**Ookla Speedtest Notice:**
 The Ookla binary is not included in this repository.
 Users install the binary directly from official Ookla repositories.
 Users must accept the Ookla Terms of Use and Privacy Policy.

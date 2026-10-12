@@ -175,7 +175,6 @@ func LoadFromLookup(lookup func(string) (string, bool)) (*Config, error) {
 		errs = append(errs, fmt.Errorf("SLA_MIN_COVERAGE must be in range (0, 1], got %v", cfg.SLAMinCoverage))
 	}
 
-	// Default SPEED_ALERT_* to plan speeds if unset
 	if val, ok := getVal("SPEED_ALERT_DOWNLOAD"); ok && val != "" {
 		cfg.SpeedAlertDownload = getOptionalFloat("SPEED_ALERT_DOWNLOAD", cfg.ISPPlanSpeed)
 		if cfg.SpeedAlertDownload <= 0 {

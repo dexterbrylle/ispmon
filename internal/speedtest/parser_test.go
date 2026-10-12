@@ -26,11 +26,9 @@ func TestParseOoklaJSON_NormalFixture(t *testing.T) {
 		t.Fatalf("unexpected error parsing normal.json: %v", err)
 	}
 
-	// 62,500,000 bytes * 8 / 1e6 = 500.0 Mbps
 	if res.DownloadMbps != 500.0 {
 		t.Errorf("expected download 500.0 Mbps, got %v", res.DownloadMbps)
 	}
-	// 60,000,000 bytes * 8 / 1e6 = 480.0 Mbps
 	if res.UploadMbps != 480.0 {
 		t.Errorf("expected upload 480.0 Mbps, got %v", res.UploadMbps)
 	}
@@ -68,11 +66,9 @@ func TestParseOoklaJSON_MissingPacketLossFixture(t *testing.T) {
 	if res.PacketLossPct != nil {
 		t.Errorf("expected nil packet loss, got %v", *res.PacketLossPct)
 	}
-	// 37,500,000 bytes * 8 / 1e6 = 300.0 Mbps
 	if res.DownloadMbps != 300.0 {
 		t.Errorf("expected download 300.0 Mbps, got %v", res.DownloadMbps)
 	}
-	// 25,000,000 bytes * 8 / 1e6 = 200.0 Mbps
 	if res.UploadMbps != 200.0 {
 		t.Errorf("expected upload 200.0 Mbps, got %v", res.UploadMbps)
 	}
