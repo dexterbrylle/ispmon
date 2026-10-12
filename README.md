@@ -14,7 +14,7 @@ When your network connection becomes slow, customer service asks for proof.
 
 `ispmon` helps you collect this proof:
 1. It runs the official Ookla `speedtest` Command Line Interface (CLI) at a set interval.
-2. It saves speed, latency, jitter, packet loss, and official proof links in a local SQLite database.
+2. It saves speed, latency, jitter, packet loss, and proof links in a local SQLite database.
 3. It evaluates contract compliance across a rolling time window.
 4. It detects network outages with separate TCP probes.
 5. It creates dispute packets with CSV and PDF reports.
@@ -74,14 +74,14 @@ You must install the official Ookla CLI tool.
 
 #### 2. Build the Program
 
-The program requires Go 1.22 or newer.
+You must have Go 1.22 or newer to build the program.
 
 Build the binary:
 ```bash
 make build
 ```
 
-Or install the binary to your Go binary directory:
+Or install the binary into your Go binary directory:
 ```bash
 go install ./cmd/ispmon
 ```
@@ -102,7 +102,7 @@ go install ./cmd/ispmon
 
 Available commands:
 - `ispmon run`: Starts the monitoring daemon.
-- `ispmon healthcheck`: Checks heartbeat file status.
+- `ispmon healthcheck`: Checks heartbeat files for liveness.
 - `ispmon version`: Shows version and build details.
 
 ---
@@ -115,7 +115,7 @@ Service templates are in the `deploy/` directory.
 ### macOS (launchd)
 
 1. Open `deploy/launchd/com.dexterbrylle.ispmon.plist`.
-2. Change the placeholder values for your username and paths.
+2. Replace the placeholder values with your username and file paths.
 3. Copy the file to `~/Library/LaunchAgents/`.
 4. Load the service:
    ```bash
@@ -125,7 +125,7 @@ Service templates are in the `deploy/` directory.
 ### Linux (systemd)
 
 1. Open `deploy/systemd/ispmon.service`.
-2. Change the placeholder values for your user and paths.
+2. Replace the placeholder values with your username and file paths.
 3. Copy the file to `/etc/systemd/system/ispmon.service`.
 4. Enable and start the service:
    ```bash
@@ -165,10 +165,10 @@ You can set them in `.env`.
 | `SMTP_SERVER` | No | *Empty* | SMTP server hostname. |
 | `SMTP_PORT` | No | `587` | SMTP port (uses STARTTLS). |
 | `SMTP_USER` | No | *Empty* | SMTP username. |
-| `SMTP_PASSWORD` | No | *Empty* | SMTP password. Never logged. |
+| `SMTP_PASSWORD` | No | *Empty* | SMTP password. The program does not log passwords. |
 | `EMAIL_RECIPIENT` | No | *Empty* | Recipient email address for reports. |
 
-*Note: Email notifications activate only when server, port, user, password, and recipient are set.*
+*Note: Email notifications activate only when you set the server, port, user, password, and recipient.*
 
 ---
 
@@ -210,18 +210,53 @@ This separation prevents connection drops from corrupting speed calculations.
 
 ### 2. Speed SLA Engine
 
-- **Valid Checks Only:** The engine evaluates only successful speed checks (`status='ok'`). Speed tests that fail with errors (`measurement_error`) or during probe outages are excluded from the speed ratio.
-- **Threshold Evaluation:** A check is below threshold if either download or upload speed falls below the contractual threshold (`ISP_PLAN_THRESHOLD` or `ISP_PLAN_UPLOAD_THRESHOLD`).
-- **Rolling Window & ~18h Warm-Up:**
-  - With default settings (`SLA_WINDOW_HOURS=24`, `CHECK_INTERVAL_MINUTES=30`, `SLA_MIN_COVERAGE=0.75`), the expected number of checks in a window is `(24 * 60) / 30 = 48` checks.
-  - The engine requires at least 75% coverage: `int(48 * 0.75) = 36` valid checks before evaluating SLA compliance.
-  - At a 30-minute interval, collecting 36 valid checks takes **~18 hours** of continuous monitoring. During this warm-up period, the status is `insufficient_data` and no breach can open or resolve.
-- **Breach Declaration:** A breach occurs when strictly greater than `SLA_VIOLATION_PCT` (default: 20%) of valid checks in the window violate the speed threshold. The engine opens an episode and dispatches one alert with CSV evidence.
-- **Silent Metric Updates:** While a breach episode remains open, subsequent checks update breach metrics (worst speeds, violation percentage, check counts) silently without sending duplicate alert cards.
-- **Recovery & Insufficient Data Invariants:**
-  - An open breach resolves only when sufficient valid checks exist (`>= 36`) and the violation percentage drops to standard levels (`<= 20%`). When resolved, the engine closes the episode and sends a resolution notice.
-  - **No Resolution on Insufficient Data:** An open breach cannot resolve while data is insufficient (for example, during a long connectivity outage or daemon downtime).
-  - **Design Decision — No Auto-Closing:** Open breaches do **not** auto-close when data is insufficient. A resolution notification represents verified recovery of service. Auto-closing during an outage or when data is missing would produce false recovery notices and split a single continuous service failure into fragmented episodes, undermining evidence needed for ISP disputes. Instead, the breach remains open until valid test measurements confirm that speeds have returned to contractual levels.
+- **Valid Checks Only:**
+  - The engine evaluates only successful speed checks (`status='ok'`).
+  - It ignores checks that fail with errors (`measurement_error`).
+  - It ignores checks during network outages.
+  - This rule prevents failed connections from corrupting speed metrics.
+
+- **Threshold Checks:**
+  - A check violates the contract if download or upload speed is below the minimum threshold.
+  - The thresholds are `ISP_PLAN_THRESHOLD` and `ISP_PLAN_UPLOAD_THRESHOLD`.
+
+- **Rolling Window and Warm-Up Period:**
+  - The engine evaluates checks across a rolling window (`SLA_WINDOW_HOURS`).
+  - With default settings (`SLA_WINDOW_HOURS=24`, `CHECK_INTERVAL_MINUTES=30`), a window expects 48 checks: `(24 * 60) / 30 = 48`.
+  - The engine requires at least 75% coverage (`SLA_MIN_COVERAGE=0.75`).
+  - This coverage requires 36 valid checks: `48 * 0.75 = 36`.
+  - At 30-minute intervals, 36 checks take approximately 18 hours.
+  - During this 18-hour warm-up period, the status is `insufficient_data`.
+  - The engine does not open or resolve breaches during this period.
+
+- **Breach Declaration:**
+  - A breach occurs when more than 20% (`SLA_VIOLATION_PCT`) of valid checks violate the threshold.
+  - The engine opens a breach episode.
+  - It sends one alert with CSV evidence.
+
+- **Metric Updates:**
+  - Subsequent checks update the breach metrics in the database.
+  - The engine does not send duplicate alert messages while the breach remains open.
+
+- **Recovery Rules:**
+  - An open breach resolves only when two conditions are true:
+    1. The window contains at least 36 valid checks.
+    2. The violation rate is 20% or less.
+  - When these conditions are met, the engine closes the episode.
+  - It sends one resolution notification.
+
+- **Insufficient Data Invariant:**
+  - An open breach cannot resolve when data is insufficient.
+  - If a long network outage occurs, valid test data stops.
+  - The breach remains open during this time.
+
+- **Decision on Auto-Closing:**
+  - Open breaches do not close automatically when data is insufficient.
+  - A resolution notice proves that network speed returned to contract levels.
+  - If breaches closed during outages, the system would send false recovery alerts.
+  - Closing breaches without data would also split one long failure into multiple short episodes.
+  - This would harm evidence collection for ISP disputes.
+  - Therefore, a breach stays open until valid tests confirm recovery.
 
 ---
 
@@ -270,8 +305,8 @@ When you copy a database in WAL mode, you must handle active write files.
   Make sure the binary is in your system `PATH`.
 
 - **Error: Health check failure:**
-  `ispmon healthcheck` checks if `.heartbeat` is fresh.
-  If the daemon stops, the file becomes old and the health check fails.
+  `ispmon healthcheck` verifies the speed heartbeat (`.heartbeat`) and probe heartbeat (`.probe_heartbeat`).
+  If either loop stops, the heartbeat file becomes stale and the check fails.
 
 - **SMTP connection failure:**
   Make sure port 587 is open.
