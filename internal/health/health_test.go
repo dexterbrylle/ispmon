@@ -88,4 +88,3 @@ func TestHealth_Lifecycle(t *testing.T) {
 		t.Fatalf("expected CheckHealth to fail when speed heartbeat is stale")
 	}
 }
-

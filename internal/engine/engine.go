@@ -22,11 +22,11 @@ import (
 
 // Engine orchestrates speed tests, probe loops, SLA evaluations, and reporting.
 type Engine struct {
-	Config        *config.Config
-	Store         *store.Store
-	Runner        speedtest.Runner
-	Prober        *probe.Prober
-	OutageSM      *outage.StateMachine
+	Config             *config.Config
+	Store              *store.Store
+	Runner             speedtest.Runner
+	Prober             *probe.Prober
+	OutageSM           *outage.StateMachine
 	Dispatcher         *notify.Dispatcher
 	HeartbeatPath      string
 	ProbeHeartbeatPath string

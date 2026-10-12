@@ -542,4 +542,3 @@ func TestStore_TimestampUTCZInvariant(t *testing.T) {
 		}
 	}
 }
-

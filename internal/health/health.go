@@ -70,4 +70,3 @@ func CheckHealth(speedHbPath, probeHbPath string, speedMaxAge, probeMaxAge time.
 	}
 	return nil
 }
-
