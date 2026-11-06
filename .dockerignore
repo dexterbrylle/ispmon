@@ -8,5 +8,4 @@ testdata/
 bin/
 deploy/
 Makefile
-BUILD_PROMPT.md
 .sheath.toml

@@ -46,7 +46,7 @@ func TestProbeDoesNotNotifyWhileDownOrBlockOnRestore(t *testing.T) {
 		}
 		return errors.New("offline")
 	}
-	e := New(&config.Config{}, st, nil, p, outage.NewStateMachine(1, nil), notify.NewDispatcher([]notify.Notifier{n}, nil), nil)
+	e := New(&config.Config{DBPath: filepath.Join(t.TempDir(), "ispmon.db")}, st, nil, p, outage.NewStateMachine(1, nil), notify.NewDispatcher([]notify.Notifier{n}, nil), nil)
 	defer func() { close(n.release); e.notifyWG.Wait() }()
 	done := make(chan struct{})
 	go func() { _ = e.RunProbeRound(context.Background()); close(done) }()
